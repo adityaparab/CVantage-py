@@ -7,6 +7,7 @@ from typing import Annotated
 from beanie import PydanticObjectId
 from beanie.odm.enums import SortDirection
 from fastapi import APIRouter, HTTPException, Path, Query
+from sse_starlette.sse import EventSourceResponse
 
 from app.analyses.schemas import (
     AnalysisListItem,
@@ -269,3 +270,33 @@ async def dismiss_suggestion(
         suggestion_id=str(result["suggestion_id"]),
         action=str(result["action"]),
     )
+
+
+@router.get(
+    "/{analysis_id}/events",
+    summary="Stream analysis progress via SSE",
+    description=(
+        "Server-Sent Events endpoint that streams analysis progress updates. "
+        "Sends a snapshot on connect, then emits status_change events as steps complete."
+    ),
+    responses={
+        200: {
+            "description": "SSE event stream.",
+            "content": {
+                "text/event-stream": {"example": 'event: snapshot\ndata: {"status":"ok"}\n\n'},
+                "application/json": {"example": {"status": "streaming"}},
+            },
+        },
+        401: {"model": ErrorEnvelope, "description": "Authentication required."},
+        404: {"model": ErrorEnvelope, "description": "Analysis not found."},
+        429: {"description": "Too many SSE connections per user."},
+    },
+)
+async def stream_analysis_events(
+    analysis_id: Annotated[PydanticObjectId, Path(description="The analysis's ObjectId")],
+    current_user: CurrentUser,
+) -> EventSourceResponse:
+    user_id = _ensure_user_id(current_user)
+    from app.analyses.events import stream_analysis_events as _stream
+
+    return await _stream(analysis_id, user_id)
