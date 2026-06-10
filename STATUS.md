@@ -41,9 +41,9 @@ Branch: main
 | 64 | Vite + React + TS scaffold (proxy, aliases, build) | #153 | ✅ |
 | 65 | Design system & theming (Tailwind v4, UI kit, dark/light) | #154 | ✅ |
 | 66 | Routing & layouts (guards, shells, lazy chunks, 404/403) | #155 | ✅ |
-| 67 | API client & query layer | — | ⏳ |
+| 67 | API client & query layer (refresh queue, auth ctx, MSW) | #156 | ✅ |
 | 68 | Forms infrastructure | — | ⏳ |
-| 69 | Frontend test harness | — | ⏳ |
+| 69 | Frontend test harness (Vitest+RTL+MSW stood up in #67) | — | ⏳ |
 
 ### Phase 6 — Admin Domain ✅
 | # | Task | PR | Status |
