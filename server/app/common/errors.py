@@ -53,13 +53,23 @@ def register_error_handlers(app: FastAPI) -> None:
         except ValueError:
             error_label = "HTTP Error"
 
+        message: str
+        details: Any | None
+        if isinstance(exc.detail, dict):
+            message = str(exc.detail.get("message", error_label))
+            details = exc.detail
+        else:
+            message = str(exc.detail)
+            details = None
+
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_envelope(
                 request=request,
                 status_code=exc.status_code,
                 error=error_label,
-                message=str(exc.detail),
+                message=message,
+                details=details,
             ),
         )
 

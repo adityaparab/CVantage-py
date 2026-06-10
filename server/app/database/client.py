@@ -24,3 +24,7 @@ async def close_database() -> None:
     if _client is not None:
         await _client.close()
         _client = None
+
+
+def get_mongo_client() -> AsyncMongoClient[Any] | None:
+    return _client
