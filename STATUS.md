@@ -40,7 +40,7 @@ Branch: main
 |---|------|----|--------|
 | 59 | Admin stats endpoint (RBAC-guarded) | #145 | ✅ |
 | 60 | Admin user management (search/update/reset/deactivate) | #149 | ✅ |
-| 61 | Privacy-bounded resume administration | — | ⏳ |
+| 61 | Privacy-bounded resume administration (cascade delete) | #150 | ✅ |
 | 62 | AI model settings endpoints | — | ⏳ |
 | 63 | Admin test suite + RBAC matrix | — | ⏳ |
 

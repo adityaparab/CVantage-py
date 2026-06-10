@@ -99,7 +99,7 @@ async def stream_analysis_events(
 ) -> EventSourceResponse:
     """Create an SSE response for analysis progress events."""
     # Ownership check
-    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id, "deleted_at": None})
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
 

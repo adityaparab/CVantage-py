@@ -325,7 +325,7 @@ async def retry_analysis(
     provider: LlmProvider,
 ) -> Analysis:
     """Retry a failed analysis. Resets status and re-runs the pipeline."""
-    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id, "deleted_at": None})
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
     if analysis.status != AnalysisStatus.FAILED:
@@ -355,7 +355,7 @@ async def cancel_analysis(
     user_id: PydanticObjectId,
 ) -> Analysis:
     """Cancel a pending analysis."""
-    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id, "deleted_at": None})
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
     if analysis.status != AnalysisStatus.PENDING:
@@ -379,7 +379,7 @@ async def apply_suggestion(
 
     Uses deep-path mutation with optimistic concurrency.
     """
-    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id, "deleted_at": None})
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
     if analysis.result is None:
@@ -422,7 +422,7 @@ async def dismiss_suggestion(
     suggestion_id: PydanticObjectId,
 ) -> dict[str, object]:
     """Dismiss a suggestion without applying it."""
-    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id, "deleted_at": None})
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
     if analysis.result is None:

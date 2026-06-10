@@ -122,13 +122,14 @@ async def get_analyses(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> AnalysisListResponse:
     user_id = _ensure_user_id(current_user)
+    query: dict[str, object] = {"user_id": user_id, "deleted_at": None}
     items = await Analysis.find(
-        {"user_id": user_id},
+        query,
         sort=[("created_at", SortDirection.DESCENDING)],
         skip=skip,
         limit=limit,
     ).to_list()
-    total = await Analysis.find({"user_id": user_id}).count()
+    total = await Analysis.find(query).count()
     return AnalysisListResponse(
         items=[_to_list_item(a) for a in items],
         total=total,
@@ -153,7 +154,7 @@ async def get_analysis_by_id(
     current_user: CurrentUser,
 ) -> AnalysisResponse:
     user_id = _ensure_user_id(current_user)
-    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id, "deleted_at": None})
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
 

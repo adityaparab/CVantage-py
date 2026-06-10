@@ -614,6 +614,10 @@ class Analysis(TimestampedDocument):
     retry_count: int = Field(0, ge=0, le=5)
     heartbeat_at: Optional[datetime] = None
 
+    # Soft delete — cascaded when an admin deletes the parent resume.
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[PydanticObjectId] = None
+
     @field_validator("steps")
     @classmethod
     def _exactly_three_steps(cls, v: list[AnalysisStep]) -> list[AnalysisStep]:

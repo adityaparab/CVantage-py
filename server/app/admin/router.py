@@ -11,6 +11,8 @@ from app.admin.schemas import (
     AdminActionResponse,
     AdminPasswordResetRequest,
     AdminPasswordResetResponse,
+    AdminResumeListItem,
+    AdminResumeListResponse,
     AdminStatsResponse,
     AdminUserListItem,
     AdminUserListResponse,
@@ -18,9 +20,11 @@ from app.admin.schemas import (
 )
 from app.admin.service import (
     _user_to_item,
+    admin_delete_resume,
     deactivate_user,
     get_admin_stats,
     get_user_or_404,
+    list_user_resumes,
     list_users,
     reactivate_user,
     reset_user_password,
@@ -212,4 +216,53 @@ async def post_reactivate_user(
 ) -> AdminActionResponse:
     assert admin.id is not None
     await reactivate_user(user_id, admin.id)
+    return AdminActionResponse(status="ok")
+
+
+@router.get(
+    "/users/{user_id}/resumes",
+    summary="List a user's resumes (metadata only)",
+    description=(
+        "Returns metadata for a user's resumes — name, source, status, counts, dates. "
+        "Never returns resume or analysis content (PROMPT.md privacy requirement)."
+    ),
+    response_model=AdminResumeListResponse,
+    responses={
+        200: {"description": "Resume metadata list."},
+        401: {"model": ErrorEnvelope, "description": "Authentication required."},
+        403: {"model": ErrorEnvelope, "description": "User is not an admin."},
+        404: {"model": ErrorEnvelope, "description": "User not found."},
+    },
+)
+async def get_user_resumes(
+    _admin: AdminUser,
+    user_id: Annotated[PydanticObjectId, Path(description="The user's ObjectId")],
+) -> AdminResumeListResponse:
+    data = await list_user_resumes(user_id)
+    return AdminResumeListResponse(
+        items=[AdminResumeListItem.model_validate(r) for r in data["items"]],
+        total=data["total"],
+    )
+
+
+@router.delete(
+    "/resumes/{resume_id}",
+    summary="Delete a resume (cascade)",
+    description=(
+        "Soft-deletes a resume and cascades the soft-delete to its analyses, clearing "
+        "their notifications. Ordered idempotent operations; re-running is a no-op. Audited."
+    ),
+    response_model=AdminActionResponse,
+    responses={
+        200: {"description": "Resume deleted (cascade complete)."},
+        401: {"model": ErrorEnvelope, "description": "Authentication required."},
+        403: {"model": ErrorEnvelope, "description": "User is not an admin."},
+        404: {"model": ErrorEnvelope, "description": "Resume not found."},
+    },
+)
+async def delete_resume(
+    admin: AdminUser,
+    resume_id: Annotated[PydanticObjectId, Path(description="The resume's ObjectId")],
+) -> AdminActionResponse:
+    await admin_delete_resume(resume_id, admin.id)
     return AdminActionResponse(status="ok")
