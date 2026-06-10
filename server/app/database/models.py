@@ -601,6 +601,7 @@ class Analysis(TimestampedDocument):
     duration_ms: Optional[int] = Field(None, ge=0)
     error: Optional[Annotated[str, StringConstraints(max_length=2000)]] = None
     retry_count: int = Field(0, ge=0, le=5)
+    heartbeat_at: Optional[datetime] = None
 
     @field_validator("steps")
     @classmethod
