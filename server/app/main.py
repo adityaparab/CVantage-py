@@ -29,6 +29,10 @@ OPENAPI_TAGS = [
         "name": "auth",
         "description": "Authentication endpoints and auth-related security limits.",
     },
+    {
+        "name": "users",
+        "description": "User profile and account-related endpoints.",
+    },
 ]
 
 
