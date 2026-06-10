@@ -33,6 +33,10 @@ OPENAPI_TAGS = [
         "name": "users",
         "description": "User profile and account-related endpoints.",
     },
+    {
+        "name": "resumes",
+        "description": "Resume CRUD, upload, and management endpoints.",
+    },
 ]
 
 
