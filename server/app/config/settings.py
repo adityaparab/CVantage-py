@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     app_name: str = "CVantage API"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     swagger_enabled: bool | None = None
+    admin_email: str | None = None
+    admin_password: str | None = None
     mongodb_uri: str = "mongodb://localhost:27017/cvantage"
     mongodb_db_name: str = "cvantage"
     ready_min_disk_free_mb: int = Field(default=128, ge=1)
