@@ -39,7 +39,7 @@ Branch: main
 | # | Task | PR | Status |
 |---|------|----|--------|
 | 64 | Vite + React + TS scaffold (proxy, aliases, build) | #153 | ✅ |
-| 65 | Design system & theming | — | ⏳ |
+| 65 | Design system & theming (Tailwind v4, UI kit, dark/light) | #154 | ✅ |
 | 66 | Routing & layouts | — | ⏳ |
 | 67 | API client & query layer | — | ⏳ |
 | 68 | Forms infrastructure | — | ⏳ |
