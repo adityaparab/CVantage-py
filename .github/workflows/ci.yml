@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend (Python + uv)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Sync server dependencies
+        working-directory: server
+        run: uv sync --frozen
+
+      - name: Ruff check
+        working-directory: server
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        working-directory: server
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        working-directory: server
+        run: uv run mypy tests
+
+      - name: Pytest
+        working-directory: server
+        run: uv run pytest tests
+
+  frontend:
+    name: Frontend (Node + pnpm)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --dir frontend lint
+
+      - name: Typecheck
+        run: pnpm --dir frontend typecheck
+
+      - name: Test
+        run: pnpm --dir frontend test
+
+      - name: Build
+        run: pnpm --dir frontend build
