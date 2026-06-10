@@ -23,7 +23,11 @@ async def test_unhandled_exception_returns_500_envelope() -> None:
 
     if not any(getattr(route, "path", None) == route_path for route in app.routes):
 
-        @app.get(route_path)
+        @app.get(
+            route_path,
+            summary="Unhandled error test route",
+            description="Raises a runtime exception to verify the 500 error envelope contract.",
+        )
         async def _boom() -> dict[str, str]:
             raise RuntimeError("boom")
 

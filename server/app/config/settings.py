@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535)
     app_name: str = "CVantage API"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    swagger_enabled: bool | None = None
     mongodb_uri: str = "mongodb://localhost:27017/cvantage"
     mongodb_db_name: str = "cvantage"
     ready_min_disk_free_mb: int = Field(default=128, ge=1)
@@ -34,6 +35,12 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @property
+    def is_swagger_enabled(self) -> bool:
+        if self.swagger_enabled is not None:
+            return self.swagger_enabled
+        return self.environment != "production"
 
 
 @lru_cache(maxsize=1)
