@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+/* Dark mode driven by a `.dark` class on <html> (set before paint to avoid FOUC). */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens extracted from cvantage-mockup.html (Pinecone-like). Exposed as
+ * Tailwind theme colors so utilities like `bg-card`, `text-muted`, `border-border`
+ * work, and the values flip with the light/dark CSS variables below.
+ */
+@theme {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+
+  --radius-card: 14px;
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+:root {
+  --bg: #ffffff;
+  --card: #ffffff;
+  --text: #0b0b22;
+  --muted: #5b5f74;
+  --border: #e5e7f0;
+  --accent: #1c17ff;
+  --accent-soft: #eceaff;
+  --accent-text: #1c17ff;
+  --success: #0c8a4d;
+  --success-bg: #e4f7ec;
+  --warn: #a16207;
+  --warn-bg: #fdf3d8;
+  --danger: #cf2640;
+  --danger-bg: #fdeaed;
+  --info: #1c5fd6;
+  --info-bg: #e7effd;
+  --grad: linear-gradient(100deg, #1c17ff 0%, #7b5cff 55%, #b14bf4 100%);
+}
+
+.dark {
+  --bg: #0a0a16;
+  --card: #141528;
+  --text: #f1f2fa;
+  --muted: #9aa0b8;
+  --border: #262940;
+  --accent: #6e6aff;
+  --accent-soft: #211f47;
+  --accent-text: #9d9aff;
+  --success: #3ecf8e;
+  --success-bg: #11301f;
+  --warn: #eab308;
+  --warn-bg: #332a0c;
+  --danger: #ff6b81;
+  --danger-bg: #3a1620;
+  --info: #6aa6ff;
+  --info-bg: #152a4a;
+  --grad: linear-gradient(100deg, #6e6aff 0%, #9d7bff 55%, #cf6bff 100%);
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere (accessibility baseline). */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bg-gradient-brand {
+  background-image: var(--grad);
+}
