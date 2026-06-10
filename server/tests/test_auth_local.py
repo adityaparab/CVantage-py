@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Annotated
 
 import pytest
@@ -9,6 +10,7 @@ import pytest_asyncio
 from fastapi import Header, HTTPException
 from httpx import ASGITransport, AsyncClient
 
+import app.auth.abuse as auth_abuse
 import app.auth.router as auth_router
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import LoginRequest, RegisterRequest
@@ -32,6 +34,7 @@ class _FakeUser:
 
 @pytest_asyncio.fixture
 async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+    auth_abuse.clear_abuse_state()
     users: dict[str, _FakeUser] = {}
     password_store: dict[str, str] = {}
     access_tokens: dict[str, str] = {}
@@ -189,6 +192,9 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
     app.dependency_overrides[get_settings] = lambda: Settings(
         environment="test",
         auth_cookie_secure=False,
+        auth_lockout_failure_threshold=2,
+        auth_lockout_backoff_base_seconds=2,
+        auth_lockout_backoff_max_seconds=4,
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -655,3 +661,45 @@ async def test_verify_email_token_success_and_reuse(auth_client: AsyncClient) ->
         json={"token": token},
     )
     assert verify_reuse.status_code == 400
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_login_lockout_engages_and_decays(
+    auth_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "lockout@example.com",
+            "fullName": "Lockout Candidate",
+            "password": "StrongPass#2026",
+        },
+    )
+
+    first_fail = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "lockout@example.com", "password": "WrongPass#2026"},
+    )
+    assert first_fail.status_code == 401
+
+    second_fail = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "lockout@example.com", "password": "WrongPass#2026"},
+    )
+    assert second_fail.status_code == 401
+
+    locked = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "lockout@example.com", "password": "StrongPass#2026"},
+    )
+    assert locked.status_code == 429
+
+    now = auth_abuse._utcnow()
+    monkeypatch.setattr(auth_abuse, "_utcnow", lambda: now + timedelta(seconds=5))
+    unlocked = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "lockout@example.com", "password": "StrongPass#2026"},
+    )
+    assert unlocked.status_code == 200

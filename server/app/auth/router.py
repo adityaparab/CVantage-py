@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
+from app.auth import abuse
 from app.auth.schemas import (
     AcceptedResponse,
     AuthTokenResponse,
@@ -110,10 +111,13 @@ def _parse_provider_or_404(provider: str) -> OAuthProvider:
     },
 )
 async def register(
+    request: Request,
     payload: RegisterRequest,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> UserMeResponse:
+    abuse.ensure_not_locked(payload.email, request.client.host if request.client else None)
     user = await register_user(payload, settings)
+    abuse.register_success(payload.email, request.client.host if request.client else None)
     return UserMeResponse(
         id=str(user.id),
         email=user.email,
@@ -190,7 +194,16 @@ async def login(
     payload: LoginRequest,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthTokenResponse:
-    access_token, refresh_token = await login_user(payload, settings, request)
+    client_ip = request.client.host if request.client else None
+    abuse.ensure_not_locked(payload.email, client_ip)
+    try:
+        access_token, refresh_token = await login_user(payload, settings, request)
+    except HTTPException as exc:
+        if exc.status_code in {401, 403}:
+            abuse.register_failure(payload.email, client_ip, settings)
+        raise
+
+    abuse.register_success(payload.email, client_ip)
     response.set_cookie(
         key=settings.auth_refresh_cookie_name,
         value=refresh_token,
@@ -526,10 +539,13 @@ async def oauth_callback(
     },
 )
 async def forgot_password(
+    request: Request,
     payload: ForgotPasswordRequest,
     settings: Annotated[Settings, Depends(get_settings)],
     response: Response,
 ) -> AcceptedResponse:
+    client_ip = request.client.host if request.client else None
+    abuse.ensure_not_locked(payload.email, client_ip)
     response.status_code = 202
     await request_password_reset(payload.email, settings)
     return AcceptedResponse(status="accepted")

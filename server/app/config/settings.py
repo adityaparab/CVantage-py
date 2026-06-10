@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     rate_limit_upload: str = "20/minute"
     rate_limit_analysis: str = "10/minute"
     shutdown_timeout_ms: int = Field(default=10_000, ge=100)
+    auth_lockout_failure_threshold: int = Field(default=5, ge=2)
+    auth_lockout_backoff_base_seconds: int = Field(default=30, ge=1)
+    auth_lockout_backoff_max_seconds: int = Field(default=900, ge=1)
 
     @field_validator("cors_origins", mode="before")
     @classmethod
