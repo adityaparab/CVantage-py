@@ -21,8 +21,9 @@ Conventions
     - soft delete via deleted_at; partial indexes exclude soft-deleted docs
     - json-resume dates kept as partial-date STRINGS ("2024", "2024-03", "2024-03-01")
     - empty/placeholder fields are stripped by validators — placeholders NEVER persisted
-    - secrets (password_hash, api_key_encrypted, token_hash) excluded from API
-      serialization via `exclude=True`
+    - secrets (password_hash, api_key_encrypted, token_hash) are persisted to the
+      database but kept out of API responses by the DTO/response-model layer — never
+      via Pydantic `exclude=True`, which would also drop them from Beanie's stored dict
 
 Setup:
     from pymongo import AsyncMongoClient          # PyMongo >= 4.9 (or motor)
@@ -380,8 +381,8 @@ class OAuthIdentity(BaseModel):
 
 class User(TimestampedDocument):
     email: EmailStr
-    # bcrypt/argon2 hash; absent for OAuth-only accounts. Excluded from API output.
-    password_hash: Optional[str] = Field(None, exclude=True)
+    # argon2 hash; absent for OAuth-only accounts. Persisted; kept out of API via DTOs.
+    password_hash: Optional[str] = None
     full_name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
     avatar_url: Optional[HttpUrl] = None
 
@@ -693,8 +694,8 @@ class AiModel(TimestampedDocument):
     model_name: Annotated[str, StringConstraints(min_length=1, max_length=120)]
     provider: Annotated[str, StringConstraints(min_length=1, max_length=80)]
 
-    # AES-256-GCM ciphertext (KMS-managed data key). NEVER the raw key. Never serialized.
-    api_key_encrypted: str = Field(..., exclude=True)
+    # AES-256-GCM ciphertext. NEVER the raw key. Persisted; kept out of API via DTOs.
+    api_key_encrypted: str
     # Last 4 chars for the masked admin UI ("sk-ant-****3kF9").
     api_key_last4: Annotated[str, StringConstraints(min_length=2, max_length=8)]
 
@@ -728,8 +729,8 @@ class AiModel(TimestampedDocument):
 class AuthToken(Document):
     user_id: PydanticObjectId
     kind: TokenKind
-    # SHA-256 of the opaque token — the raw token is never stored. Never serialized.
-    token_hash: str = Field(..., exclude=True)
+    # SHA-256 of the opaque token — the raw token is never stored. Kept out of API via DTOs.
+    token_hash: str
 
     expires_at: datetime
     consumed_at: Optional[datetime] = None

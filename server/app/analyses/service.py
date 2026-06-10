@@ -147,11 +147,15 @@ async def run_step_compare(
             matching_skills=response.parsed.matching_skills,
             skill_gaps=response.parsed.skill_gaps,
         )
+        # Re-acquire: the save() above replaced analysis.steps via merge_models,
+        # so the earlier `step` reference is now detached and won't persist.
+        step = analysis.steps[step_index]
         step.status = StepStatus.COMPLETED
         step.completed_at = _utcnow()
         await analysis.save()
         return result
     except Exception as e:
+        step = analysis.steps[step_index]
         step.status = StepStatus.FAILED
         step.error = str(e)[:2000]
         step.completed_at = _utcnow()
@@ -184,11 +188,14 @@ async def run_step_suggestions(
             )
             for s in response.parsed.suggestions
         ]
+        # Re-acquire after save() (merge_models replaced the steps list).
+        step = analysis.steps[step_index]
         step.status = StepStatus.COMPLETED
         step.completed_at = _utcnow()
         await analysis.save()
         return suggestions
     except Exception as e:
+        step = analysis.steps[step_index]
         step.status = StepStatus.FAILED
         step.error = str(e)[:2000]
         step.completed_at = _utcnow()
@@ -215,11 +222,14 @@ async def run_step_interview(
             InterviewQuestion(question=q.question, suggested_answer=q.suggested_answer)
             for q in response.parsed.questions
         ]
+        # Re-acquire after save() (merge_models replaced the steps list).
+        step = analysis.steps[step_index]
         step.status = StepStatus.COMPLETED
         step.completed_at = _utcnow()
         await analysis.save()
         return questions
     except Exception as e:
+        step = analysis.steps[step_index]
         step.status = StepStatus.FAILED
         step.error = str(e)[:2000]
         step.completed_at = _utcnow()

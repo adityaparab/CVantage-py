@@ -2,14 +2,28 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+import langchain_openai
 import pytest
 from pydantic import BaseModel, Field
 
+from app.ai.crypto import CryptoService
 from app.ai.llm import (
     FakeLlmProvider,
     LlmInvalidOutputError,
+    LlmProvider,
+    LlmQuotaError,
     LlmResponse,
+    LlmTimeoutError,
+    OpenAiLlmProvider,
+    _build_retry_decorator,
 )
+from app.ai.models import AiModelService
+from app.config import Settings
+from app.database.models import AiModelUsage
+
+_TEST_MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
 
 class _TestSchema(BaseModel):
@@ -112,3 +126,103 @@ class TestFakeLlmProvider:
         response = await provider.structured_call("", "", _TestSchema)
         assert response.usage.prompt_tokens == 0
         assert response.usage.duration_ms == 0
+
+
+def test_base_provider_is_abstract() -> None:
+    import asyncio
+
+    with pytest.raises(NotImplementedError):
+        asyncio.run(LlmProvider().structured_call("", "", _TestSchema))
+
+
+def test_retry_decorator_builds() -> None:
+    decorator = _build_retry_decorator()
+    assert callable(decorator)
+
+
+class _FakeStructured:
+    def __init__(self, outcome: Any) -> None:
+        self._outcome = outcome
+
+    async def ainvoke(self, _messages: Any) -> Any:
+        if isinstance(self._outcome, Exception):
+            raise self._outcome
+        return self._outcome
+
+
+class _FakeChatOpenAI:
+    outcome: Any = None
+    captured: dict[str, Any] = {}
+
+    def __init__(self, **kwargs: Any) -> None:
+        type(self).captured = kwargs
+
+    def with_structured_output(self, schema: type[BaseModel], method: str = "json_mode") -> Any:
+        return _FakeStructured(type(self).outcome)
+
+
+def _model_service(*, openai_api_key: str | None = "env-key") -> AiModelService:
+    settings = Settings(
+        environment="test",
+        master_encryption_key=_TEST_MASTER_KEY,
+        openai_api_key=openai_api_key,
+    )
+    return AiModelService(CryptoService(settings.master_encryption_key), settings)
+
+
+@pytest.mark.usefixtures("beanie_db")
+class TestOpenAiLlmProvider:
+    @pytest.mark.asyncio
+    async def test_no_key_raises_quota(self) -> None:
+        provider = OpenAiLlmProvider(_model_service(openai_api_key=None), AiModelUsage.ANALYSIS)
+        with pytest.raises(LlmQuotaError):
+            await provider.structured_call("sys", "user", _TestSchema)
+
+    @pytest.mark.asyncio
+    async def test_success_with_model_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeChatOpenAI.outcome = _TestSchema(name="Real", score=88)
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+        provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
+        response = await provider.structured_call("sys", "user", _TestSchema)
+        assert response.parsed.name == "Real"
+        assert response.usage.model == "gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_success_with_dict_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeChatOpenAI.outcome = {"name": "FromDict", "score": 50}
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+        provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
+        response = await provider.structured_call("sys", "user", _TestSchema)
+        assert response.parsed.name == "FromDict"
+
+    @pytest.mark.asyncio
+    async def test_timeout_mapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeChatOpenAI.outcome = RuntimeError("Request timed out")
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+        provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
+        with pytest.raises(LlmTimeoutError):
+            await provider.structured_call("sys", "user", _TestSchema)
+
+    @pytest.mark.asyncio
+    async def test_quota_mapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeChatOpenAI.outcome = RuntimeError("insufficient quota / rate limit")
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+        provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
+        with pytest.raises(LlmQuotaError):
+            await provider.structured_call("sys", "user", _TestSchema)
+
+    @pytest.mark.asyncio
+    async def test_invalid_output_mapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeChatOpenAI.outcome = RuntimeError("garbled response")
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+        provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
+        with pytest.raises(LlmInvalidOutputError):
+            await provider.structured_call("sys", "user", _TestSchema)
+
+    @pytest.mark.asyncio
+    async def test_unexpected_output_type_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeChatOpenAI.outcome = 12345  # not a BaseModel or dict
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+        provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
+        with pytest.raises(LlmInvalidOutputError):
+            await provider.structured_call("sys", "user", _TestSchema)
