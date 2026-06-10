@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+from argon2 import PasswordHasher
+from argon2.low_level import Type
+
+_PASSWORD_HASHER = PasswordHasher(type=Type.ID)
+
+
+def hash_password(password: str) -> str:
+    return _PASSWORD_HASHER.hash(password)
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return _PASSWORD_HASHER.verify(password_hash, password)
+    except Exception:
+        return False
