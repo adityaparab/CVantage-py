@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     auth_lockout_failure_threshold: int = Field(default=5, ge=2)
     auth_lockout_backoff_base_seconds: int = Field(default=30, ge=1)
     auth_lockout_backoff_max_seconds: int = Field(default=900, ge=1)
+    storage_driver: str = Field(default="local", pattern=r"^(local|s3)$")
+    storage_local_dir: str = Field(default="./data/uploads")
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    s3_region: str = "us-east-1"
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod
