@@ -97,6 +97,28 @@ class AnalysisListItem(BaseModel):
     )
 
 
+class SuggestionActionResponse(BaseModel):
+    """Response after applying or dismissing a suggestion."""
+
+    status: str = "ok"
+    suggestion_id: str
+    action: str  # "applied" or "dismissed"
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"status": "ok", "suggestion_id": "abc123", "action": "applied"}
+        }
+    )
+
+
+class CancelAnalysisResponse(BaseModel):
+    """Response after cancelling an analysis."""
+
+    status: str = "ok"
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "ok"}})
+
+
 class AnalysisListResponse(BaseModel):
     """Paginated list of analyses."""
 

@@ -13,7 +13,9 @@ from app.analyses.schemas import (
     AnalysisListResponse,
     AnalysisResponse,
     AnalysisStepResponse,
+    CancelAnalysisResponse,
     CreateAnalysisRequest,
+    SuggestionActionResponse,
 )
 from app.analyses.service import create_analysis, run_full_pipeline
 from app.auth.dependencies import CurrentUser
@@ -149,3 +151,115 @@ async def get_analysis_by_id(
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
     return _analysis_to_response(analysis)
+
+
+@router.post(
+    "/{analysis_id}/retry",
+    summary="Retry a failed analysis",
+    description="Resets and re-runs the full pipeline for a failed analysis.",
+    response_model=AnalysisResponse,
+    responses={
+        200: {"description": "Analysis retried successfully."},
+        401: {"model": ErrorEnvelope, "description": "Authentication required."},
+        404: {"model": ErrorEnvelope, "description": "Analysis not found."},
+        422: {"model": ErrorEnvelope, "description": "Analysis is not in failed state."},
+    },
+)
+async def retry_analysis(
+    analysis_id: Annotated[PydanticObjectId, Path(description="The analysis's ObjectId")],
+    current_user: CurrentUser,
+) -> AnalysisResponse:
+    user_id = _ensure_user_id(current_user)
+    from app.ai.llm import FakeLlmProvider
+    from app.analyses.service import retry_analysis as _retry
+
+    provider = FakeLlmProvider()
+    analysis = await _retry(analysis_id, user_id, provider)
+    return _analysis_to_response(analysis)
+
+
+@router.post(
+    "/{analysis_id}/cancel",
+    summary="Cancel a pending analysis",
+    description="Cancels an analysis that is still in pending state.",
+    response_model=CancelAnalysisResponse,
+    responses={
+        200: {"description": "Analysis cancelled."},
+        401: {"model": ErrorEnvelope, "description": "Authentication required."},
+        404: {"model": ErrorEnvelope, "description": "Analysis not found."},
+        422: {"model": ErrorEnvelope, "description": "Analysis is not in pending state."},
+    },
+)
+async def cancel_analysis(
+    analysis_id: Annotated[PydanticObjectId, Path(description="The analysis's ObjectId")],
+    current_user: CurrentUser,
+) -> CancelAnalysisResponse:
+    user_id = _ensure_user_id(current_user)
+    from app.analyses.service import cancel_analysis as _cancel
+
+    await _cancel(analysis_id, user_id)
+    return CancelAnalysisResponse(status="ok")
+
+
+@router.post(
+    "/{analysis_id}/suggestions/{suggestion_id}/apply",
+    summary="Apply a suggestion to the resume",
+    description=(
+        "Applies the suggestion's proposed value to the live resume at the targeted field path. "
+        "Uses optimistic concurrency — a 409 if the resume was modified since the analysis."
+    ),
+    response_model=SuggestionActionResponse,
+    responses={
+        200: {"description": "Suggestion applied."},
+        401: {"model": ErrorEnvelope, "description": "Authentication required."},
+        404: {"model": ErrorEnvelope, "description": "Analysis or suggestion not found."},
+        409: {"model": ErrorEnvelope, "description": "Version conflict on resume."},
+        410: {"model": ErrorEnvelope, "description": "Resume has been deleted."},
+        422: {
+            "model": ErrorEnvelope,
+            "description": "Suggestion already applied or analysis has no results.",
+        },
+    },
+)
+async def apply_suggestion(
+    analysis_id: Annotated[PydanticObjectId, Path(description="The analysis's ObjectId")],
+    suggestion_id: Annotated[PydanticObjectId, Path(description="The suggestion's ObjectId")],
+    current_user: CurrentUser,
+) -> SuggestionActionResponse:
+    user_id = _ensure_user_id(current_user)
+    from app.analyses.service import apply_suggestion as _apply
+
+    result = await _apply(analysis_id, user_id, suggestion_id)
+    return SuggestionActionResponse(
+        status=str(result["status"]),
+        suggestion_id=str(result["suggestion_id"]),
+        action=str(result["action"]),
+    )
+
+
+@router.post(
+    "/{analysis_id}/suggestions/{suggestion_id}/dismiss",
+    summary="Dismiss a suggestion",
+    description="Marks a suggestion as dismissed without applying it.",
+    response_model=SuggestionActionResponse,
+    responses={
+        200: {"description": "Suggestion dismissed."},
+        401: {"model": ErrorEnvelope, "description": "Authentication required."},
+        404: {"model": ErrorEnvelope, "description": "Analysis or suggestion not found."},
+        422: {"model": ErrorEnvelope, "description": "Analysis has no results."},
+    },
+)
+async def dismiss_suggestion(
+    analysis_id: Annotated[PydanticObjectId, Path(description="The analysis's ObjectId")],
+    suggestion_id: Annotated[PydanticObjectId, Path(description="The suggestion's ObjectId")],
+    current_user: CurrentUser,
+) -> SuggestionActionResponse:
+    user_id = _ensure_user_id(current_user)
+    from app.analyses.service import dismiss_suggestion as _dismiss
+
+    result = await _dismiss(analysis_id, user_id, suggestion_id)
+    return SuggestionActionResponse(
+        status=str(result["status"]),
+        suggestion_id=str(result["suggestion_id"]),
+        action=str(result["action"]),
+    )

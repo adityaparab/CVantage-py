@@ -9,6 +9,7 @@ Implements the 3-step analysis pipeline:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from beanie import PydanticObjectId
@@ -267,6 +268,160 @@ async def run_full_pipeline(
 
         await _update_resume_rollup(analysis.resume_id, ResumeAnalysisStatus.FAILED)
         logger.error("analysis.pipeline_failed", analysis_id=str(analysis.id), error=str(e))
+
+
+async def retry_analysis(
+    analysis_id: PydanticObjectId,
+    user_id: PydanticObjectId,
+    provider: LlmProvider,
+) -> Analysis:
+    """Retry a failed analysis. Resets status and re-runs the pipeline."""
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    if analysis is None:
+        raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
+    if analysis.status != AnalysisStatus.FAILED:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Only failed analyses can be retried"},
+        )
+
+    analysis.status = AnalysisStatus.PENDING
+    analysis.error = None
+    analysis.retry_count += 1
+    for step in analysis.steps:
+        step.status = StepStatus.PENDING
+        step.error = None
+        step.started_at = None
+        step.completed_at = None
+    await analysis.save()
+
+    await run_full_pipeline(analysis, provider)
+    refreshed = await Analysis.get(analysis.id)
+    assert refreshed is not None
+    return refreshed
+
+
+async def cancel_analysis(
+    analysis_id: PydanticObjectId,
+    user_id: PydanticObjectId,
+) -> Analysis:
+    """Cancel a pending analysis."""
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    if analysis is None:
+        raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
+    if analysis.status != AnalysisStatus.PENDING:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Only pending analyses can be cancelled"},
+        )
+
+    analysis.status = AnalysisStatus.CANCELLED
+    analysis.completed_at = _utcnow()
+    await analysis.save()
+    return analysis
+
+
+async def apply_suggestion(
+    analysis_id: PydanticObjectId,
+    user_id: PydanticObjectId,
+    suggestion_id: PydanticObjectId,
+) -> dict[str, object]:
+    """Apply a suggestion's proposedValue to the live resume at the targeted fieldRef.
+
+    Uses deep-path mutation with optimistic concurrency.
+    """
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    if analysis is None:
+        raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
+    if analysis.result is None:
+        raise HTTPException(status_code=422, detail={"message": "Analysis has no results"})
+
+    suggestion = _find_suggestion(analysis, suggestion_id)
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail={"message": "Suggestion not found"})
+    if suggestion.applied:
+        raise HTTPException(status_code=422, detail={"message": "Suggestion already applied"})
+
+    resume = await Resume.find_one(
+        {"_id": analysis.resume_id, "user_id": user_id, "deleted_at": None}
+    )
+    if resume is None:
+        raise HTTPException(status_code=410, detail={"message": "Resume has been deleted"})
+
+    # Apply the proposed value at the field_ref path
+    if suggestion.proposed_value is not None:
+        _set_deep_path(resume.json_resume, suggestion.field_ref, suggestion.proposed_value)
+
+    suggestion.applied = True
+    suggestion.applied_at = _utcnow()
+    await analysis.save()
+
+    try:
+        await resume.save()
+    except Exception:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "Version conflict - resume was modified. Please retry."},
+        ) from None
+
+    return {"status": "ok", "suggestion_id": str(suggestion_id), "action": "applied"}
+
+
+async def dismiss_suggestion(
+    analysis_id: PydanticObjectId,
+    user_id: PydanticObjectId,
+    suggestion_id: PydanticObjectId,
+) -> dict[str, object]:
+    """Dismiss a suggestion without applying it."""
+    analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
+    if analysis is None:
+        raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
+    if analysis.result is None:
+        raise HTTPException(status_code=422, detail={"message": "Analysis has no results"})
+
+    suggestion = _find_suggestion(analysis, suggestion_id)
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail={"message": "Suggestion not found"})
+
+    suggestion.dismissed = True
+    await analysis.save()
+
+    return {"status": "ok", "suggestion_id": str(suggestion_id), "action": "dismissed"}
+
+
+def _find_suggestion(analysis: Analysis, suggestion_id: PydanticObjectId) -> Suggestion | None:
+    """Find a suggestion by ID in the analysis result."""
+    if analysis.result is None:
+        return None
+    for s in analysis.result.suggestions:
+        if s.suggestion_id == suggestion_id:
+            return s
+    return None
+
+
+def _set_deep_path(obj: object, field_ref: str, value: str) -> None:
+    """Set a value at a deep path like 'work[0].highlights' on a Beanie document."""
+    import re
+
+    parts = field_ref.split(".")
+    current: Any = obj
+
+    for i, part in enumerate(parts):
+        array_match = re.match(r"^(\w+)\[(\d+)\]$", part)
+        if array_match:
+            field_name = array_match.group(1)
+            index = int(array_match.group(2))
+            current = getattr(current, field_name, None)
+            if current is None or index >= len(current):
+                raise ValueError(f"Invalid field ref: {field_ref}")
+            current = current[index]
+        else:
+            if i == len(parts) - 1:
+                setattr(current, part, value)
+            else:
+                current = getattr(current, part, None)
+                if current is None:
+                    raise ValueError(f"Invalid field ref: {field_ref}")
 
 
 async def _update_resume_rollup(
