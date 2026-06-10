@@ -22,3 +22,15 @@ Monorepo scaffold for the CVantage platform.
 5. Install commit hooks:
 	- `cd ..` (repo root)
 	- `pre-commit install`
+
+## Local Mongo (Docker Compose)
+
+Run MongoDB locally using the `db` profile:
+
+- `docker compose --profile db up -d`
+
+Verify health:
+
+- `docker compose ps`
+
+MongoDB will be available at `localhost:27017`.
