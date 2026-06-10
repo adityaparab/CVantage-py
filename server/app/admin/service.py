@@ -17,6 +17,8 @@ from app.database.models import (
     Analysis,
     AuditAction,
     AuditLog,
+    Notification,
+    NotificationState,
     Resume,
     User,
     UserStatus,
@@ -114,11 +116,12 @@ async def _audit(
     action: AuditAction,
     target_id: PydanticObjectId | None,
     meta: dict[str, Any] | None = None,
+    target_type: str = "user",
 ) -> None:
     await AuditLog(
         actor_id=actor_id,
         action=action,
-        target_type="user",
+        target_type=target_type,
         target_id=target_id,
         meta=meta,
     ).insert()
@@ -209,3 +212,80 @@ async def reactivate_user(
     await user.save()
     await _audit(actor_id, AuditAction.ADMIN_USER_REACTIVATE, user_id)
     return user
+
+
+# ---------------------------------------------------------------------------
+# Privacy-bounded resume administration (#61)
+# ---------------------------------------------------------------------------
+
+
+def _resume_to_metadata(resume: Resume) -> dict[str, Any]:
+    """Whitelist resume metadata only — never json_resume or original_text."""
+    return {
+        "id": str(resume.id),
+        "name": resume.name,
+        "source": resume.source.value,
+        "analysisStatus": resume.analysis_status.value,
+        "analysisCount": resume.analysis_count,
+        "createdAt": resume.created_at,
+        "lastAnalyzedAt": resume.last_analyzed_at,
+    }
+
+
+async def list_user_resumes(user_id: PydanticObjectId) -> dict[str, Any]:
+    """List a user's (non-deleted) resumes as metadata only."""
+    await get_user_or_404(user_id)
+    resumes = await Resume.find(
+        {"user_id": user_id, "deleted_at": None},
+        sort=[("created_at", SortDirection.DESCENDING)],
+    ).to_list()
+    return {
+        "items": [_resume_to_metadata(r) for r in resumes],
+        "total": len(resumes),
+    }
+
+
+async def admin_delete_resume(
+    resume_id: PydanticObjectId,
+    actor_id: PydanticObjectId | None,
+) -> None:
+    """Soft-delete a resume and cascade to its analyses + notifications.
+
+    Ordered, idempotent operations (no multi-doc transaction, per D15):
+    re-running on an already-deleted resume is a no-op.
+    """
+    resume = await Resume.get(resume_id)
+    if resume is None:
+        raise HTTPException(status_code=404, detail={"message": "Resume not found"})
+
+    already_deleted = resume.deleted_at is not None
+    now = _utcnow()
+
+    # 1. Cascade soft-delete the resume's still-live analyses (none on a re-run).
+    analyses = await Analysis.find({"resume_id": resume_id, "deleted_at": None}).to_list()
+    for analysis in analyses:
+        analysis.deleted_at = now
+        analysis.deleted_by = actor_id
+        await analysis.save()
+
+        # 2. Clear any active notifications for that analysis.
+        notifs = await Notification.find(
+            {"analysis_id": analysis.id, "state": NotificationState.ACTIVE.value}
+        ).to_list()
+        for notif in notifs:
+            notif.state = NotificationState.CLEARED
+            notif.cleared_at = now
+            await notif.save()
+
+    # 3. Finally, soft-delete the resume itself (skip + don't re-audit on a no-op re-run).
+    if not already_deleted:
+        resume.deleted_at = now
+        resume.deleted_by = actor_id
+        await resume.save()
+        await _audit(
+            actor_id,
+            AuditAction.ADMIN_RESUME_DELETE,
+            resume_id,
+            {"cascaded_analyses": len(analyses)},
+            target_type="resume",
+        )

@@ -125,3 +125,60 @@ class AdminActionResponse(BaseModel):
     status: str = "ok"
 
     model_config = ConfigDict(json_schema_extra={"example": {"status": "ok"}})
+
+
+class AdminResumeListItem(BaseModel):
+    """Resume metadata for admins — explicit whitelist, NEVER content.
+
+    Deliberately excludes ``json_resume`` and ``original_text`` so resume or
+    analysis content can never leak through the admin API (PROMPT.md privacy).
+    """
+
+    id: str
+    name: str
+    source: str
+    analysis_status: str = Field(alias="analysisStatus")
+    analysis_count: int = Field(alias="analysisCount", ge=0)
+    created_at: datetime = Field(alias="createdAt")
+    last_analyzed_at: datetime | None = Field(default=None, alias="lastAnalyzedAt")
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "id": "665c3ef2c9d8f76b6e4f4f20",
+                "name": "Backend Engineer Resume",
+                "source": "uploaded",
+                "analysisStatus": "completed",
+                "analysisCount": 4,
+                "createdAt": "2026-02-01T12:00:00Z",
+                "lastAnalyzedAt": "2026-06-09T08:30:00Z",
+            }
+        },
+    )
+
+
+class AdminResumeListResponse(BaseModel):
+    """A user's resumes (metadata only) for the admin console."""
+
+    items: list[AdminResumeListItem]
+    total: int = Field(ge=0)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [
+                    {
+                        "id": "665c3ef2c9d8f76b6e4f4f20",
+                        "name": "Backend Engineer Resume",
+                        "source": "uploaded",
+                        "analysisStatus": "completed",
+                        "analysisCount": 4,
+                        "createdAt": "2026-02-01T12:00:00Z",
+                        "lastAnalyzedAt": "2026-06-09T08:30:00Z",
+                    }
+                ],
+                "total": 1,
+            }
+        }
+    )
