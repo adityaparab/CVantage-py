@@ -13,7 +13,7 @@ import pytest
 from beanie import PydanticObjectId
 from fastapi import HTTPException
 
-from app.ai.llm import FakeLlmProvider, LlmError, LlmProvider, LlmResponse
+from app.ai.llm import FakeLlmProvider, LlmError, LlmProvider, LlmResponse, LlmUsage
 from app.analyses import service as analyses_service
 from app.analyses.service import (
     apply_suggestion,
@@ -353,6 +353,84 @@ class TestSuggestionApplyDismiss:
         assert reloaded is not None
         assert reloaded.result is not None
         assert reloaded.result.suggestions[0].dismissed is True
+
+
+class _UsageProvider(LlmProvider):
+    """Fake provider that reports fixed token usage per call."""
+
+    def __init__(self, prompt: int, completion: int) -> None:
+        self._base = _fake_provider()
+        self._prompt = prompt
+        self._completion = completion
+
+    async def structured_call(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        schema: type[Any],
+        model_name: str = "",
+        temperature: float = 0.0,
+        timeout_seconds: int = 60,
+    ) -> LlmResponse[Any]:
+        resp = await self._base.structured_call(
+            system_prompt, user_prompt, schema, model_name, temperature, timeout_seconds
+        )
+        resp.usage = LlmUsage(
+            prompt_tokens=self._prompt,
+            completion_tokens=self._completion,
+            total_tokens=self._prompt + self._completion,
+        )
+        return resp
+
+
+@pytest.mark.usefixtures("beanie_db")
+class TestCostGuards:
+    @pytest.mark.asyncio
+    async def test_token_usage_accumulated_across_steps(self) -> None:
+        resume = await _make_resume()
+        analysis = await create_analysis(
+            user_id=resume.user_id,
+            name="JD",
+            job_description="u" * 60,
+            resume_id=resume.id,  # type: ignore[arg-type]
+        )
+        await run_full_pipeline(analysis, _UsageProvider(prompt=100, completion=25))
+
+        done = await Analysis.get(analysis.id)
+        assert done is not None
+        assert done.token_usage is not None
+        # Three steps, each 100 prompt + 25 completion.
+        assert done.token_usage.prompt_tokens == 300
+        assert done.token_usage.completion_tokens == 75
+        assert done.token_usage.total_tokens == 375
+
+    @pytest.mark.asyncio
+    async def test_concurrent_analysis_limit_returns_429(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.config import Settings
+
+        monkeypatch.setattr(
+            analyses_service,
+            "get_settings",
+            lambda: Settings(environment="test", max_concurrent_analyses_per_user=1),
+        )
+        resume = await _make_resume()
+        # First analysis (pending) consumes the single slot.
+        await create_analysis(
+            user_id=resume.user_id,
+            name="A1",
+            job_description="a" * 60,
+            resume_id=resume.id,  # type: ignore[arg-type]
+        )
+        with pytest.raises(HTTPException) as exc:
+            await create_analysis(
+                user_id=resume.user_id,
+                name="A2",
+                job_description="b" * 60,
+                resume_id=resume.id,  # type: ignore[arg-type]
+            )
+        assert exc.value.status_code == 429
 
 
 class TestDeepPathAndText:

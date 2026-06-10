@@ -53,6 +53,7 @@ class AnalysisResponse(BaseModel):
     steps: list[AnalysisStepResponse]
     result: dict[str, object] | None = None
     model_used: str | None = None
+    token_usage: dict[str, int] | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
+import structlog
 from pydantic import BaseModel
 from tenacity import (
     retry,
@@ -22,6 +23,8 @@ from tenacity import (
 
 from app.ai.models import AiModelService
 from app.database.models import AiModelUsage
+
+logger = structlog.get_logger("app.ai.llm")
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -121,12 +124,39 @@ def _build_retry_decorator() -> Callable[..., Any]:
     )
 
 
-class OpenAiLlmProvider(LlmProvider):
-    """Real OpenAI provider using langchain-openai's ChatOpenAI."""
+def _extract_usage(raw: Any, model: str, duration_ms: int) -> LlmUsage:
+    """Pull token counts off a LangChain AIMessage's usage_metadata."""
+    usage = LlmUsage(model=model, duration_ms=duration_ms)
+    meta = getattr(raw, "usage_metadata", None)
+    if isinstance(meta, dict):
+        usage.prompt_tokens = int(meta.get("input_tokens", 0) or 0)
+        usage.completion_tokens = int(meta.get("output_tokens", 0) or 0)
+        usage.total_tokens = int(
+            meta.get("total_tokens", usage.prompt_tokens + usage.completion_tokens) or 0
+        )
+    return usage
 
-    def __init__(self, model_service: AiModelService, usage: AiModelUsage) -> None:
+
+class OpenAiLlmProvider(LlmProvider):
+    """Real OpenAI provider using langchain-openai's ChatOpenAI.
+
+    Captures per-call token usage, bounds output via ``max_tokens``, and attaches
+    any configured observability callbacks (issue #54).
+    """
+
+    def __init__(
+        self,
+        model_service: AiModelService,
+        usage: AiModelUsage,
+        settings: Any = None,
+    ) -> None:
         self._model_service = model_service
         self._usage = usage
+        if settings is None:
+            from app.config import get_settings
+
+            settings = get_settings()
+        self._settings = settings
 
     async def structured_call(
         self,
@@ -138,32 +168,35 @@ class OpenAiLlmProvider(LlmProvider):
         timeout_seconds: int = 60,
     ) -> LlmResponse[Any]:
         from langchain_openai import ChatOpenAI
+        from pydantic import SecretStr
+
+        from app.ai.observability import build_llm_callbacks
 
         # Resolve model + key
         resolved = await self._model_service.resolve_key(self._usage)
         if resolved is None:
             raise LlmQuotaError()
-        provider_name, resolved_model, api_key = resolved
+        _provider_name, resolved_model, api_key = resolved
         actual_model = model_name or resolved_model
-
-        from pydantic import SecretStr
 
         llm = ChatOpenAI(
             model=actual_model,
             api_key=SecretStr(api_key),
             temperature=temperature,
-            timeout=timeout_seconds,
+            timeout=self._settings.llm_timeout_seconds,
+            max_tokens=self._settings.llm_max_output_tokens,  # type: ignore[call-arg]
             max_retries=0,  # We handle retries ourselves via tenacity
         )
+        callbacks = build_llm_callbacks(self._settings)
 
         start = time.monotonic()
         try:
-            structured_llm = llm.with_structured_output(schema, method="json_mode")
+            structured_llm = llm.with_structured_output(
+                schema, method="json_mode", include_raw=True
+            )
             result = await structured_llm.ainvoke(
-                [
-                    ("system", system_prompt),
-                    ("human", user_prompt),
-                ]
+                [("system", system_prompt), ("human", user_prompt)],
+                config={"callbacks": callbacks} if callbacks else None,
             )
         except Exception as e:
             err_str = str(e).lower()
@@ -175,24 +208,34 @@ class OpenAiLlmProvider(LlmProvider):
 
         duration_ms = int((time.monotonic() - start) * 1000)
 
-        # Parse the result - it could be a Pydantic model or dict
-        if isinstance(result, BaseModel):
-            parsed = result
-        elif isinstance(result, dict):
+        # include_raw=True yields {"raw": AIMessage, "parsed": <model|None>, "parsing_error": ...}
+        raw = result.get("raw") if isinstance(result, dict) else None
+        parsed_obj = result.get("parsed") if isinstance(result, dict) else result
+        parsing_error = result.get("parsing_error") if isinstance(result, dict) else None
+        if parsing_error is not None:
+            raise LlmInvalidOutputError(str(parsing_error))
+
+        if isinstance(parsed_obj, BaseModel):
+            parsed = parsed_obj
+        elif isinstance(parsed_obj, dict):
             try:
-                parsed = schema.model_validate(result)
+                parsed = schema.model_validate(parsed_obj)
             except Exception as e:
                 raise LlmInvalidOutputError(str(e)) from e
         else:
-            raise LlmInvalidOutputError(f"Unexpected output type: {type(result)}")
+            raise LlmInvalidOutputError(f"Unexpected output type: {type(parsed_obj)}")
 
-        return LlmResponse(
-            parsed=parsed,
-            usage=LlmUsage(
-                model=actual_model,
-                duration_ms=duration_ms,
-            ),
+        usage = _extract_usage(raw, actual_model, duration_ms)
+        logger.info(
+            "llm.call_completed",
+            model=actual_model,
+            usage_type=self._usage.value,
+            duration_ms=duration_ms,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
         )
+        return LlmResponse(parsed=parsed, usage=usage)
 
 
 # ============================================================================
