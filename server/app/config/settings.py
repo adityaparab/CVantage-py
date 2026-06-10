@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     auth_lockout_failure_threshold: int = Field(default=5, ge=2)
     auth_lockout_backoff_base_seconds: int = Field(default=30, ge=1)
     auth_lockout_backoff_max_seconds: int = Field(default=900, ge=1)
+    master_encryption_key: str = Field(
+        default="",
+        description="32-byte base64-encoded key for AES-256-GCM encryption of provider API keys",
+    )
+    openai_api_key: str | None = Field(
+        default=None, description="OpenAI API key (env fallback for AI models)"
+    )
     storage_driver: str = Field(default="local", pattern=r"^(local|s3)$")
     storage_local_dir: str = Field(default="./data/uploads")
     s3_bucket: str | None = None
