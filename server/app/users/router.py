@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated
+from fastapi import APIRouter
 
-from fastapi import APIRouter, Depends
-
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import CurrentUser
 from app.auth.schemas import UserMeResponse
 from app.common.schemas import ErrorEnvelope
-from app.database.models import User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -61,7 +58,7 @@ router = APIRouter(prefix="/users", tags=["users"])
         },
     },
 )
-async def me(current_user: Annotated[User, Depends(get_current_user)]) -> UserMeResponse:
+async def me(current_user: CurrentUser) -> UserMeResponse:
     return UserMeResponse(
         id=str(current_user.id),
         email=current_user.email,
