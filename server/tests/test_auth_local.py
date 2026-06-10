@@ -34,6 +34,8 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
     refresh_active: dict[str, str] = {}
     refresh_consumed_owner: dict[str, str] = {}
     revoked_users: set[str] = set()
+    reset_tokens: dict[str, dict[str, object]] = {}
+    verify_tokens: dict[str, dict[str, object]] = {}
 
     token_counter = 0
 
@@ -86,6 +88,7 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
         user = _FakeUser(id=f"user-{len(users) + 1}", email=email, full_name=payload.full_name)
         users[email] = user
         password_store[email] = payload.password
+        verify_tokens[f"verify::{email}"] = {"email": email, "consumed": False}
         return user
 
     async def _login_user(payload: LoginRequest, _: object, __: object) -> tuple[str, str]:
@@ -125,6 +128,34 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
         if owner is not None:
             _revoke_user_family(owner)
 
+    async def _request_password_reset(email: str, _: object) -> None:
+        normalized = email.lower().strip()
+        if normalized in users:
+            reset_tokens[f"reset::{normalized}"] = {
+                "email": normalized,
+                "consumed": False,
+                "expired": False,
+            }
+
+    async def _reset_password_with_token(token: str, new_password: str, _: object) -> None:
+        if token.startswith("expired::"):
+            raise HTTPException(status_code=400, detail={"message": "Invalid or expired token"})
+
+        record = reset_tokens.get(token)
+        if record is None or bool(record["consumed"]) or bool(record["expired"]):
+            raise HTTPException(status_code=400, detail={"message": "Invalid or expired token"})
+
+        email = str(record["email"])
+        record["consumed"] = True
+        password_store[email] = new_password
+        _revoke_user_family(email)
+
+    async def _verify_email_with_token(token: str) -> None:
+        record = verify_tokens.get(token)
+        if record is None or bool(record["consumed"]):
+            raise HTTPException(status_code=400, detail={"message": "Invalid or expired token"})
+        record["consumed"] = True
+
     async def _get_current_user_override(
         authorization: Annotated[str | None, Header()] = None,
     ) -> _FakeUser:
@@ -145,6 +176,9 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
     monkeypatch.setattr(auth_router, "login_user", _login_user)
     monkeypatch.setattr(auth_router, "refresh_user_session", _refresh_user_session)
     monkeypatch.setattr(auth_router, "logout_user_session", _logout_user_session)
+    monkeypatch.setattr(auth_router, "request_password_reset", _request_password_reset)
+    monkeypatch.setattr(auth_router, "reset_password_with_token", _reset_password_with_token)
+    monkeypatch.setattr(auth_router, "verify_email_with_token", _verify_email_with_token)
 
     app = create_app()
     app.dependency_overrides[get_current_user] = _get_current_user_override
@@ -501,3 +535,119 @@ async def test_oauth_mocked_duplicate_identity_conflict(
         params={"code": "duplicate", "state": state_cookie},
     )
     assert conflict.status_code == 409
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_forgot_password_uniform_202_and_reset_reuse_expiry_behaviour(
+    auth_client: AsyncClient,
+) -> None:
+    register_response = await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "reset@example.com",
+            "fullName": "Reset Candidate",
+            "password": "StrongPass#2026",
+        },
+    )
+    assert register_response.status_code == 200
+
+    forgot_existing = await auth_client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "reset@example.com"},
+    )
+    forgot_missing = await auth_client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "missing@example.com"},
+    )
+
+    assert forgot_existing.status_code == 202
+    assert forgot_missing.status_code == 202
+    assert forgot_existing.json() == forgot_missing.json() == {"status": "accepted"}
+
+    token = "reset::reset@example.com"
+    reset_once = await auth_client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "newPassword": "NewStrongPass#2026"},
+    )
+    assert reset_once.status_code == 200
+
+    reset_reuse = await auth_client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "newPassword": "AgainStrongPass#2026"},
+    )
+    assert reset_reuse.status_code == 400
+
+    reset_expired = await auth_client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "expired::reset@example.com", "newPassword": "AgainStrongPass#2026"},
+    )
+    assert reset_expired.status_code == 400
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_password_reset_invalidates_existing_refresh_session(
+    auth_client: AsyncClient,
+) -> None:
+    register_response = await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "sessionreset@example.com",
+            "fullName": "Reset Session",
+            "password": "StrongPass#2026",
+        },
+    )
+    assert register_response.status_code == 200
+
+    login_response = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "sessionreset@example.com", "password": "StrongPass#2026"},
+    )
+    assert login_response.status_code == 200
+
+    refresh_cookie = login_response.cookies.get("cv_refresh_token")
+    assert refresh_cookie is not None
+
+    await auth_client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "sessionreset@example.com"},
+    )
+    reset_response = await auth_client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "reset::sessionreset@example.com", "newPassword": "NewStrongPass#2026"},
+    )
+    assert reset_response.status_code == 200
+
+    replay_refresh = await auth_client.post(
+        "/api/v1/auth/refresh",
+        cookies={"cv_refresh_token": refresh_cookie},
+    )
+    assert replay_refresh.status_code == 401
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_verify_email_token_success_and_reuse(auth_client: AsyncClient) -> None:
+    register_response = await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "verify@example.com",
+            "fullName": "Verify Candidate",
+            "password": "StrongPass#2026",
+        },
+    )
+    assert register_response.status_code == 200
+
+    token = "verify::verify@example.com"
+    verify_once = await auth_client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": token},
+    )
+    assert verify_once.status_code == 200
+
+    verify_reuse = await auth_client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": token},
+    )
+    assert verify_reuse.status_code == 400

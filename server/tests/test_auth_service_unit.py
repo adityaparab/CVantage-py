@@ -290,3 +290,257 @@ def test_refresh_token_ttl_index_declared() -> None:
     ]
     assert ttl_indexes
     assert ttl_indexes[0].document.get("expireAfterSeconds") == 0
+
+
+def test_oauth_provider_flags_reflect_config() -> None:
+    flags = service.oauth_provider_flags(
+        Settings(
+            environment="test",
+            oauth_google_client_id="google-id",
+            oauth_google_client_secret="google-secret",
+            oauth_linkedin_client_id=None,
+            oauth_linkedin_client_secret=None,
+        )
+    )
+    assert flags == {"google": True, "linkedin": False}
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_is_noop_for_unknown_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FakeUserNone:
+        email = object()
+
+        @staticmethod
+        async def find_one(*_: object) -> None:
+            return None
+
+    called = {"issue": 0, "mail": 0}
+
+    async def _issue(*_: object) -> str:
+        called["issue"] += 1
+        return "token"
+
+    class _Mailer:
+        async def send(self, _: object) -> None:
+            called["mail"] += 1
+
+    monkeypatch.setattr(service, "User", _FakeUserNone)
+    monkeypatch.setattr(service, "_issue_one_time_token", _issue)
+    monkeypatch.setattr(service, "build_mail_service", lambda _: _Mailer())
+
+    await service.request_password_reset("missing@example.com", Settings(environment="test"))
+
+    assert called == {"issue": 0, "mail": 0}
+
+
+@pytest.mark.asyncio
+async def test_request_password_reset_issues_token_and_sends_mail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _FakeUserRecord(
+        id="user-1",
+        email="candidate@example.com",
+        full_name="Jane",
+        password_hash="hash",
+    )
+
+    class _FakeUserByEmail:
+        email = object()
+
+        @staticmethod
+        async def find_one(*_: object) -> _FakeUserRecord:
+            return user
+
+    sent = {"to": None, "subject": None, "body": None}
+
+    async def _issue(*_: object) -> str:
+        return "reset-token"
+
+    class _Mailer:
+        async def send(self, message: Any) -> None:
+            sent["to"] = message.to_email
+            sent["subject"] = message.subject
+            sent["body"] = message.text_body
+
+    monkeypatch.setattr(service, "User", _FakeUserByEmail)
+    monkeypatch.setattr(service, "_issue_one_time_token", _issue)
+    monkeypatch.setattr(service, "build_mail_service", lambda _: _Mailer())
+
+    await service.request_password_reset("candidate@example.com", Settings(environment="test"))
+
+    assert sent["to"] == "candidate@example.com"
+    assert sent["subject"] == "CVantage password reset"
+    assert "reset-token" in cast(str, sent["body"])
+
+
+@pytest.mark.asyncio
+async def test_reset_password_with_token_updates_password_and_revokes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _UserWithSave:
+        def __init__(self) -> None:
+            self.password_hash = "old"
+            self.id = "user-1"
+            self.saved = False
+
+        async def save(self) -> None:
+            self.saved = True
+
+    user = _UserWithSave()
+
+    @dataclass(slots=True)
+    class _TokenRecord:
+        user_id: str
+
+    async def _consume(*_: object) -> _TokenRecord:
+        return _TokenRecord(user_id="user-1")
+
+    class _UserGet:
+        @staticmethod
+        async def get(*_: object) -> _UserWithSave:
+            return user
+
+    revoked = {"called": False}
+
+    async def _revoke(*_: object) -> None:
+        revoked["called"] = True
+
+    monkeypatch.setattr(service, "_consume_one_time_token", _consume)
+    monkeypatch.setattr(service, "User", _UserGet)
+    monkeypatch.setattr(service, "_revoke_user_refresh_family", _revoke)
+    monkeypatch.setattr(service, "hash_password", lambda _: "new-hash")
+
+    await service.reset_password_with_token(
+        "token",
+        "NewStrongPass#2026",
+        Settings(environment="test"),
+    )
+
+    assert user.password_hash == "new-hash"
+    assert user.saved is True
+    assert revoked["called"] is True
+
+
+@pytest.mark.asyncio
+async def test_reset_password_with_token_rejects_missing_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @dataclass(slots=True)
+    class _TokenRecord:
+        user_id: str
+
+    async def _consume(*_: object) -> _TokenRecord:
+        return _TokenRecord(user_id="missing")
+
+    class _MissingUser:
+        @staticmethod
+        async def get(*_: object) -> None:
+            return None
+
+    monkeypatch.setattr(service, "_consume_one_time_token", _consume)
+    monkeypatch.setattr(service, "User", _MissingUser)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.reset_password_with_token(
+            "token",
+            "NewStrongPass#2026",
+            Settings(environment="test"),
+        )
+
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_verify_email_with_token_marks_user_verified(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _UserWithVerify:
+        def __init__(self) -> None:
+            self.email_verified = False
+            self.saved = False
+
+        async def save(self) -> None:
+            self.saved = True
+
+    user = _UserWithVerify()
+
+    @dataclass(slots=True)
+    class _TokenRecord:
+        user_id: str
+
+    async def _consume(*_: object) -> _TokenRecord:
+        return _TokenRecord(user_id="user-1")
+
+    class _UserGet:
+        @staticmethod
+        async def get(*_: object) -> _UserWithVerify:
+            return user
+
+    monkeypatch.setattr(service, "_consume_one_time_token", _consume)
+    monkeypatch.setattr(service, "User", _UserGet)
+
+    await service.verify_email_with_token("token")
+
+    assert user.email_verified is True
+    assert user.saved is True
+
+
+@pytest.mark.asyncio
+async def test_consume_one_time_token_invalid_or_expired(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _TokenModel:
+        consumed_at: datetime | None = None
+        expires_at: datetime
+
+        def __init__(self, expires_at: datetime) -> None:
+            self.expires_at = expires_at
+
+        async def save(self) -> None:
+            return None
+
+    class _FakeAuthTokenModel:
+        next_record: _TokenModel | None = None
+
+        @classmethod
+        async def find_one(cls, *_: object) -> _TokenModel | None:
+            return cls.next_record
+
+    monkeypatch.setattr(service, "AuthToken", _FakeAuthTokenModel)
+
+    _FakeAuthTokenModel.next_record = None
+    with pytest.raises(HTTPException) as missing:
+        await service._consume_one_time_token("missing", TokenKind.PASSWORD_RESET)
+    assert missing.value.status_code == 400
+
+    _FakeAuthTokenModel.next_record = _TokenModel(
+        expires_at=datetime.now(UTC) - timedelta(seconds=1)
+    )
+    with pytest.raises(HTTPException) as expired:
+        await service._consume_one_time_token("expired", TokenKind.PASSWORD_RESET)
+    assert expired.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_consume_one_time_token_success_marks_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _TokenModel:
+        consumed_at: datetime | None = None
+        expires_at: datetime = datetime.now(UTC) + timedelta(hours=1)
+        user_id: str = "user-1"
+
+        async def save(self) -> None:
+            return None
+
+    record = _TokenModel()
+
+    class _FakeAuthTokenModel:
+        @staticmethod
+        async def find_one(*_: object) -> _TokenModel:
+            return record
+
+    monkeypatch.setattr(service, "AuthToken", _FakeAuthTokenModel)
+
+    consumed = await service._consume_one_time_token("ok-token", TokenKind.EMAIL_VERIFY)
+
+    assert consumed is record
+    assert consumed.consumed_at is not None

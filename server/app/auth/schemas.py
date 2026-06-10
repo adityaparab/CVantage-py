@@ -48,3 +48,24 @@ class OAuthAuthorizationResponse(BaseModel):
     authorization_url: str = Field(alias="authorizationUrl")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr = Field(examples=["candidate@example.com"])
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=512)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=512)
+    new_password: str = Field(alias="newPassword", min_length=8, max_length=256)
+
+
+class AcceptedResponse(BaseModel):
+    status: str = Field(examples=["accepted"])
+
+
+class SuccessResponse(BaseModel):
+    status: str = Field(examples=["ok"])

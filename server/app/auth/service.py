@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 from starlette.requests import Request
 
+from app.auth.mail import MailMessage, build_mail_service
 from app.auth.passwords import hash_password, verify_password
 from app.auth.schemas import LoginRequest, RegisterRequest
 from app.auth.tokens import create_access_token, decode_access_token
@@ -106,6 +107,10 @@ async def _issue_refresh_token(user: User, settings: Settings, request: Request)
 
 def _invalid_refresh_token_error() -> HTTPException:
     return HTTPException(status_code=401, detail={"message": "Invalid refresh token"})
+
+
+def _invalid_one_time_token_error() -> HTTPException:
+    return HTTPException(status_code=400, detail={"message": "Invalid or expired token"})
 
 
 def oauth_provider_flags(settings: Settings) -> dict[str, bool]:
@@ -443,3 +448,78 @@ async def get_user_by_token(token: str, settings: Settings) -> User | None:
     if user_id is None:
         return None
     return await User.get(user_id)
+
+
+async def _issue_one_time_token(
+    user_id: object,
+    kind: TokenKind,
+    ttl: timedelta,
+) -> str:
+    raw_token = secrets.token_urlsafe(48)
+    await AuthToken(
+        user_id=user_id,
+        kind=kind,
+        token_hash=_hash_refresh_token(raw_token),
+        expires_at=_utcnow() + ttl,
+    ).insert()
+    return raw_token
+
+
+async def _consume_one_time_token(token: str, kind: TokenKind) -> AuthToken:
+    token_hash = _hash_refresh_token(token)
+    record = await AuthToken.find_one({"kind": kind, "token_hash": token_hash})
+    if record is None:
+        raise _invalid_one_time_token_error()
+
+    now = _utcnow()
+    if record.consumed_at is not None or record.expires_at <= now:
+        if record.consumed_at is None:
+            record.consumed_at = now
+            await record.save()
+        raise _invalid_one_time_token_error()
+
+    record.consumed_at = now
+    await record.save()
+    return record
+
+
+async def request_password_reset(email: str, settings: Settings) -> None:
+    normalized_email = email.lower().strip()
+    user = await User.find_one(User.email == normalized_email)
+    if user is None:
+        return
+
+    token = await _issue_one_time_token(user.id, TokenKind.PASSWORD_RESET, timedelta(hours=1))
+    mailer = build_mail_service(settings)
+    await mailer.send(
+        MailMessage(
+            to_email=user.email,
+            subject="CVantage password reset",
+            text_body=f"Use this token to reset your password: {token}",
+        )
+    )
+
+
+async def reset_password_with_token(token: str, new_password: str, settings: Settings) -> None:
+    _validate_password_strength(new_password)
+    record = await _consume_one_time_token(token, TokenKind.PASSWORD_RESET)
+
+    user = await User.get(record.user_id)
+    if user is None:
+        raise _invalid_one_time_token_error()
+
+    user.password_hash = hash_password(new_password)
+    await user.save()
+    await _revoke_user_refresh_family(user.id)
+    _ = settings
+
+
+async def verify_email_with_token(token: str) -> None:
+    record = await _consume_one_time_token(token, TokenKind.EMAIL_VERIFY)
+
+    user = await User.get(record.user_id)
+    if user is None:
+        raise _invalid_one_time_token_error()
+
+    user.email_verified = True
+    await user.save()
