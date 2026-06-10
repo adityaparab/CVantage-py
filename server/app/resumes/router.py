@@ -1,13 +1,30 @@
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path as FsPath
 from typing import Annotated
 
+import filetype  # type: ignore[import-untyped]
 from beanie import PydanticObjectId
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import Path as FAPath
 
 import app.resumes.service as service
 from app.auth.dependencies import CurrentUser
 from app.common.schemas import ErrorEnvelope
+from app.config import Settings, get_settings
+from app.database.models import (
+    ALLOWED_RESUME_MIME,
+    MAX_RESUME_FILE_BYTES,
+    Resume,
+    ResumeSource,
+    UploadParse,
+    UploadParseStatus,
+    User,
+)
+from app.database.models import (
+    JsonResume as DbJsonResume,
+)
 from app.resumes.schemas import (
     CreateResumeRequest,
     DeleteResumeResponse,
@@ -15,6 +32,7 @@ from app.resumes.schemas import (
     ResumeResponse,
     UpdateResumeRequest,
 )
+from app.resumes.schemas import Resume as SchemasResume
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -204,7 +222,7 @@ async def get_resumes(
     },
 )
 async def get_resume_by_id(
-    resume_id: Annotated[PydanticObjectId, Path(description="The resume's ObjectId")],
+    resume_id: Annotated[PydanticObjectId, FAPath(description="The resume's ObjectId")],
     current_user: CurrentUser,
 ) -> ResumeResponse:
     user_id = _ensure_user_id(current_user)
@@ -269,7 +287,7 @@ async def get_resume_by_id(
     },
 )
 async def patch_resume(
-    resume_id: Annotated[PydanticObjectId, Path(description="The resume's ObjectId")],
+    resume_id: Annotated[PydanticObjectId, FAPath(description="The resume's ObjectId")],
     payload: UpdateResumeRequest,
     current_user: CurrentUser,
 ) -> ResumeResponse:
@@ -302,9 +320,196 @@ async def patch_resume(
     },
 )
 async def delete_resume_by_id(
-    resume_id: Annotated[PydanticObjectId, Path(description="The resume's ObjectId")],
+    resume_id: Annotated[PydanticObjectId, FAPath(description="The resume's ObjectId")],
     current_user: CurrentUser,
 ) -> DeleteResumeResponse:
     user_id = _ensure_user_id(current_user)
     await service.delete_resume(user_id, resume_id, deleted_by=user_id)
     return DeleteResumeResponse(status="ok")
+
+
+# ============================================================================
+# Upload endpoint (Issue #44)
+# ============================================================================
+
+ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx"}
+
+
+def _validate_upload(upload: UploadFile, data: bytes) -> None:
+    """Validate file size, extension, MIME type, and magic bytes."""
+    if len(data) > MAX_RESUME_FILE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "message": (
+                    f"File too large. Maximum size is {MAX_RESUME_FILE_BYTES // (1024 * 1024)} MB"
+                )
+            },
+        )
+
+    original_filename = (upload.filename or "").strip()
+    if not original_filename:
+        raise HTTPException(status_code=422, detail={"message": "No filename provided"})
+
+    ext = FsPath(original_filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": f"Invalid file extension '{ext}'. "
+                f"Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            },
+        )
+
+    content_type = (upload.content_type or "").lower()
+    if content_type not in ALLOWED_RESUME_MIME:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": f"Invalid MIME type '{content_type}'. "
+                "Only PDF, DOC, and DOCX files are allowed"
+            },
+        )
+
+    kind = filetype.guess(data)
+    detected_mime = kind.mime if kind else ""
+    # DOCX/DOC files are ZIP/OLE2-based; filetype detects them as application/zip or similar
+    _MAGIC_ALLOWED = set(ALLOWED_RESUME_MIME) | {"application/zip", "application/x-tika-ooxml"}
+    if detected_mime not in _MAGIC_ALLOWED:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "File content does not match the expected format. "
+                f"Detected type: {detected_mime or 'unknown'}"
+            },
+        )
+
+
+def _deduplicate_name(base_name: str, existing_names: set[str]) -> str:
+    """Append a numeric suffix if the name already exists."""
+    if base_name not in existing_names:
+        return base_name
+    stem = FsPath(base_name).stem
+    ext = FsPath(base_name).suffix
+    counter = 1
+    while f"{stem} ({counter}){ext}" in existing_names:
+        counter += 1
+    return f"{stem} ({counter}){ext}"
+
+
+@router.post(
+    "/upload",
+    summary="Upload a resume file",
+    description=(
+        "Upload a PDF, DOC, or DOCX resume file (max 10 MB). "
+        "The file is validated for size, extension, MIME type, and magic bytes. "
+        "On success, the file is stored via StorageService and a Resume document "
+        "is created with source=uploaded and uploadParse=pending. "
+        "Use the returned resume id and parse status URL to track AI parsing progress."
+    ),
+    response_model=ResumeResponse,
+    status_code=201,
+    responses={
+        201: {
+            "description": "File uploaded and resume created.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "665c3ef2c9d8f76b6e4f4f20",
+                        "name": "resume.pdf",
+                        "source": "uploaded",
+                        "json_resume": {},
+                        "analysis_status": "unanalyzed",
+                        "original_text": None,
+                        "last_analyzed_at": None,
+                        "analysis_count": 0,
+                        "created_at": "2026-06-10T10:00:00Z",
+                        "updated_at": "2026-06-10T10:00:00Z",
+                    }
+                }
+            },
+        },
+        401: {
+            "model": ErrorEnvelope,
+            "description": "Missing or invalid bearer token.",
+        },
+        413: {
+            "model": ErrorEnvelope,
+            "description": "File exceeds maximum size.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 413,
+                        "error": "Request Entity Too Large",
+                        "message": "File too large. Maximum size is 10 MB",
+                        "path": "/api/v1/resumes/upload",
+                    }
+                }
+            },
+        },
+        422: {
+            "model": ErrorEnvelope,
+            "description": "Validation error (invalid extension, MIME, or magic bytes).",
+        },
+        429: {
+            "model": ErrorEnvelope,
+            "description": "Rate limit exceeded for uploads.",
+        },
+    },
+)
+async def upload_resume(
+    upload: UploadFile,
+    current_user: CurrentUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ResumeResponse:
+    """Upload a resume file, validate it, and create a Resume document."""
+    data = await upload.read()
+    _validate_upload(upload, data)
+    user_id = _ensure_user_id(current_user)
+
+    from app.storage import LocalDiskStorage
+
+    storage = LocalDiskStorage(settings.storage_local_dir)
+
+    sha256 = hashlib.sha256(data).hexdigest()
+    storage_key = f"{user_id}/{sha256[:16]}/{upload.filename}"
+
+    await storage.put(storage_key, data)
+
+    name = upload.filename or "resume"
+    existing = await Resume.find({"user_id": user_id, "deleted_at": None}).to_list()
+    existing_names = {r.name for r in existing}
+    name = _deduplicate_name(name, existing_names)
+
+    resume = Resume(
+        user_id=user_id,
+        name=name,
+        source=ResumeSource.UPLOADED,
+        json_resume=DbJsonResume.model_validate({}),
+        original_file={
+            "file_name": upload.filename,
+            "mime_type": upload.content_type or "application/octet-stream",
+            "size_bytes": len(data),
+            "storage_key": storage_key,
+            "sha256": sha256,
+        },
+        upload_parse=UploadParse(status=UploadParseStatus.PENDING),
+    )
+    await resume.insert()
+
+    await User.find({"_id": user_id}).inc({"resume_count": 1})
+
+    return ResumeResponse(
+        id=str(resume.id),
+        name=resume.name,
+        source=resume.source.value,
+        json_resume=SchemasResume.model_validate(
+            resume.json_resume.model_dump(exclude_none=True, by_alias=True)
+        ),
+        analysis_status=resume.analysis_status.value,
+        original_text=resume.original_text,
+        last_analyzed_at=resume.last_analyzed_at,
+        analysis_count=resume.analysis_count,
+        created_at=resume.created_at,
+        updated_at=resume.updated_at,
+    )
