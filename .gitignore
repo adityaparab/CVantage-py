@@ -8,3 +8,19 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+.secrets/
+
+# IDE/system
+.vscode/
+.DS_Store
+Thumbs.db

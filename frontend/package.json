@@ -1,0 +1,13 @@
+{
+  "name": "cvantage-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CVantage frontend scaffold",
+  "packageManager": "pnpm@10.12.4",
+  "scripts": {
+    "dev": "echo \"frontend scaffold\"",
+    "build": "echo \"frontend scaffold\"",
+    "lint": "echo \"frontend scaffold\"",
+    "test": "echo \"frontend scaffold\""
+  }
+}
