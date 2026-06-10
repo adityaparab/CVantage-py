@@ -42,7 +42,7 @@ Branch: main
 | 65 | Design system & theming (Tailwind v4, UI kit, dark/light) | #154 | ✅ |
 | 66 | Routing & layouts (guards, shells, lazy chunks, 404/403) | #155 | ✅ |
 | 67 | API client & query layer (refresh queue, auth ctx, MSW) | #156 | ✅ |
-| 68 | Forms infrastructure | — | ⏳ |
+| 68 | Forms infrastructure (RHF+zod fields, array, dirty guard) | #157 | ✅ |
 | 69 | Frontend test harness (Vitest+RTL+MSW stood up in #67) | — | ⏳ |
 
 ### Phase 6 — Admin Domain ✅
