@@ -42,7 +42,7 @@ jobs:
 
       - name: Pytest
         working-directory: server
-        run: uv run pytest tests
+        run: uv run pytest tests --cov --cov-report=term-missing --cov-fail-under=80
 
   frontend:
     name: Frontend (Node + pnpm)
