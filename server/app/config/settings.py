@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     mongodb_uri: str = "mongodb://localhost:27017/cvantage"
     mongodb_db_name: str = "cvantage"
+    ready_min_disk_free_mb: int = Field(default=128, ge=1)
+    ready_min_memory_available_mb: int = Field(default=128, ge=1)
 
 
 @lru_cache(maxsize=1)
