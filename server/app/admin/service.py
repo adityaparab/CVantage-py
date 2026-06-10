@@ -10,10 +10,14 @@ from beanie.odm.enums import SortDirection
 from bson.errors import InvalidId
 from fastapi import HTTPException
 
+from app.ai.crypto import CryptoService
+from app.ai.models import AiModelService, validate_api_key
 from app.auth.passwords import hash_password
 from app.auth.service import _revoke_user_refresh_family, request_password_reset
 from app.config import Settings
 from app.database.models import (
+    AiModelStatus,
+    AiModelUsage,
     Analysis,
     AuditAction,
     AuditLog,
@@ -289,3 +293,131 @@ async def admin_delete_resume(
             {"cascaded_analyses": len(analyses)},
             target_type="resume",
         )
+
+
+# ---------------------------------------------------------------------------
+# AI model settings (#62)
+# ---------------------------------------------------------------------------
+
+
+def _ai_model_service(settings: Settings) -> AiModelService:
+    return AiModelService(CryptoService(settings.master_encryption_key), settings)
+
+
+def _parse_usages(values: list[str]) -> list[AiModelUsage]:
+    try:
+        return [AiModelUsage(v) for v in values]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail={"message": f"Invalid usage value: {exc}"}
+        ) from exc
+
+
+async def admin_list_models(settings: Settings) -> dict[str, Any]:
+    """List all AI models with masked keys."""
+    rows = await _ai_model_service(settings).list_all()
+    return {"items": rows, "total": len(rows)}
+
+
+async def admin_create_model(
+    model_name: str,
+    provider: str,
+    api_key: str,
+    usages: list[str],
+    actor_id: PydanticObjectId | None,
+    settings: Settings,
+) -> dict[str, Any]:
+    """Validate the key with a live ping, then store it encrypted. Audited."""
+    parsed_usages = _parse_usages(usages)
+    if not await validate_api_key(provider, model_name, api_key, settings):
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "API key failed validation against the provider"},
+        )
+    svc = _ai_model_service(settings)
+    actor = actor_id if actor_id is not None else PydanticObjectId()
+    model = await svc.create(model_name, provider, api_key, parsed_usages, actor)
+    await _audit(
+        actor_id,
+        AuditAction.ADMIN_MODEL_ADD,
+        model.id,
+        {"provider": provider, "model": model_name},
+        target_type="aimodel",
+    )
+    return _model_to_response(model)
+
+
+async def admin_update_model(
+    model_id: PydanticObjectId,
+    status: str | None,
+    usages: list[str] | None,
+    settings: Settings,
+) -> dict[str, Any]:
+    parsed_status = AiModelStatus(status) if status is not None else None
+    parsed_usages = _parse_usages(usages) if usages is not None else None
+    model = await _ai_model_service(settings).update(model_id, parsed_status, parsed_usages)
+    return _model_to_response(model)
+
+
+async def admin_rotate_model_key(
+    model_id: PydanticObjectId,
+    new_api_key: str,
+    actor_id: PydanticObjectId | None,
+    settings: Settings,
+) -> dict[str, Any]:
+    svc = _ai_model_service(settings)
+    model = await svc.get(model_id)
+    if not await validate_api_key(model.provider, model.model_name, new_api_key, settings):
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "API key failed validation against the provider"},
+        )
+    rotated = await svc.rotate_key(model_id, new_api_key)
+    await _audit(
+        actor_id,
+        AuditAction.ADMIN_MODEL_KEY_ROTATE,
+        model_id,
+        target_type="aimodel",
+    )
+    return _model_to_response(rotated)
+
+
+async def admin_delete_model(
+    model_id: PydanticObjectId,
+    actor_id: PydanticObjectId | None,
+    settings: Settings,
+) -> None:
+    """Delete a model, blocking removal of the last active model for any usage."""
+    svc = _ai_model_service(settings)
+    model = await svc.get(model_id)
+    if model.status == AiModelStatus.ACTIVE:
+        for usage in model.usages:
+            remaining = await svc.count_active_for_usage(usage, exclude_id=model_id)
+            if remaining == 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": (
+                            f"Cannot delete the only active model for usage '{usage.value}'"
+                        )
+                    },
+                )
+    await svc.delete(model_id)
+    await _audit(
+        actor_id,
+        AuditAction.ADMIN_MODEL_REMOVE,
+        model_id,
+        {"provider": model.provider, "model": model.model_name},
+        target_type="aimodel",
+    )
+
+
+def _model_to_response(model: Any) -> dict[str, Any]:
+    return {
+        "id": str(model.id),
+        "modelName": model.model_name,
+        "provider": model.provider,
+        "apiKeyLast4": model.api_key_last4,
+        "usages": [u.value for u in model.usages],
+        "status": model.status.value,
+    }

@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from beanie import PydanticObjectId
 from fastapi import APIRouter, Depends, Path, Query
 
 from app.admin.schemas import (
     AdminActionResponse,
+    AdminModelCreateRequest,
+    AdminModelListResponse,
+    AdminModelResponse,
+    AdminModelRotateRequest,
+    AdminModelUpdateRequest,
     AdminPasswordResetRequest,
     AdminPasswordResetResponse,
     AdminResumeListItem,
@@ -20,7 +25,12 @@ from app.admin.schemas import (
 )
 from app.admin.service import (
     _user_to_item,
+    admin_create_model,
+    admin_delete_model,
     admin_delete_resume,
+    admin_list_models,
+    admin_rotate_model_key,
+    admin_update_model,
     deactivate_user,
     get_admin_stats,
     get_user_or_404,
@@ -265,4 +275,121 @@ async def delete_resume(
     resume_id: Annotated[PydanticObjectId, Path(description="The resume's ObjectId")],
 ) -> AdminActionResponse:
     await admin_delete_resume(resume_id, admin.id)
+    return AdminActionResponse(status="ok")
+
+
+# ---------------------------------------------------------------------------
+# AI model settings (#62)
+# ---------------------------------------------------------------------------
+
+_MODEL_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorEnvelope, "description": "Authentication required."},
+    403: {"model": ErrorEnvelope, "description": "User is not an admin."},
+}
+
+
+@router.get(
+    "/models",
+    summary="List AI models",
+    description="Lists configured AI models. Keys are always masked to their last 4 characters.",
+    response_model=AdminModelListResponse,
+    responses={200: {"description": "Masked model list."}, **_MODEL_ERROR_RESPONSES},
+)
+async def get_models(
+    _admin: AdminUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminModelListResponse:
+    data = await admin_list_models(settings)
+    return AdminModelListResponse(
+        items=[AdminModelResponse.model_validate(r) for r in data["items"]],
+        total=data["total"],
+    )
+
+
+@router.post(
+    "/models",
+    summary="Add an AI model",
+    description="Validates the API key by a live provider ping, then stores it encrypted. Audited.",
+    response_model=AdminModelResponse,
+    status_code=201,
+    responses={
+        201: {"description": "Model created."},
+        409: {"model": ErrorEnvelope, "description": "Model already exists."},
+        422: {"model": ErrorEnvelope, "description": "Invalid usage or API key."},
+        **_MODEL_ERROR_RESPONSES,
+    },
+)
+async def post_model(
+    admin: AdminUser,
+    payload: AdminModelCreateRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminModelResponse:
+    row = await admin_create_model(
+        payload.model_name, payload.provider, payload.api_key, payload.usages, admin.id, settings
+    )
+    return AdminModelResponse.model_validate(row)
+
+
+@router.patch(
+    "/models/{model_id}",
+    summary="Update an AI model",
+    description="Update a model's status (active/disabled) and/or usages.",
+    response_model=AdminModelResponse,
+    responses={
+        200: {"description": "Model updated."},
+        404: {"model": ErrorEnvelope, "description": "Model not found."},
+        422: {"model": ErrorEnvelope, "description": "Invalid status or usage value."},
+        **_MODEL_ERROR_RESPONSES,
+    },
+)
+async def patch_model(
+    _admin: AdminUser,
+    model_id: Annotated[PydanticObjectId, Path(description="The model's ObjectId")],
+    payload: AdminModelUpdateRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminModelResponse:
+    row = await admin_update_model(model_id, payload.status, payload.usages, settings)
+    return AdminModelResponse.model_validate(row)
+
+
+@router.post(
+    "/models/{model_id}/rotate-key",
+    summary="Rotate an AI model's API key",
+    description="Validates and re-encrypts a new API key, bumping the masked last-4. Audited.",
+    response_model=AdminModelResponse,
+    responses={
+        200: {"description": "Key rotated."},
+        404: {"model": ErrorEnvelope, "description": "Model not found."},
+        422: {"model": ErrorEnvelope, "description": "Invalid API key."},
+        **_MODEL_ERROR_RESPONSES,
+    },
+)
+async def post_rotate_model_key(
+    admin: AdminUser,
+    model_id: Annotated[PydanticObjectId, Path(description="The model's ObjectId")],
+    payload: AdminModelRotateRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminModelResponse:
+    row = await admin_rotate_model_key(model_id, payload.api_key, admin.id, settings)
+    return AdminModelResponse.model_validate(row)
+
+
+@router.delete(
+    "/models/{model_id}",
+    summary="Delete an AI model",
+    description="Deletes a model. Blocks removal of the only active model for any usage (409).",
+    response_model=AdminActionResponse,
+    responses={
+        200: {"description": "Model deleted."},
+        404: {"model": ErrorEnvelope, "description": "Model not found."},
+        409: {"model": ErrorEnvelope, "description": "Last active model for a usage."},
+        **_MODEL_ERROR_RESPONSES,
+    },
+)
+async def delete_model(
+    admin: AdminUser,
+    model_id: Annotated[PydanticObjectId, Path(description="The model's ObjectId")],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdminActionResponse:
+    await admin_delete_model(model_id, admin.id, settings)
     return AdminActionResponse(status="ok")
