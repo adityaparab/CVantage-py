@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     mongodb_db_name: str = "cvantage"
     ready_min_disk_free_mb: int = Field(default=128, ge=1)
     ready_min_memory_available_mb: int = Field(default=128, ge=1)
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    max_request_body_bytes: int = Field(default=2_000_000, ge=1_024)
+    rate_limit_global: str = "200/minute"
+    rate_limit_auth: str = "60/minute"
+    rate_limit_upload: str = "20/minute"
+    rate_limit_analysis: str = "10/minute"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
 
 @lru_cache(maxsize=1)
