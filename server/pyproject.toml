@@ -4,11 +4,16 @@ version = "0.1.0"
 description = "CVantage backend service"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+	"fastapi>=0.116.0",
+	"uvicorn>=0.35.0",
+]
 
 [dependency-groups]
 dev = [
+	"httpx>=0.28.0",
 	"mypy>=1.10.0",
+	"pytest-asyncio>=0.24.0",
 	"pytest>=8.2.0",
 	"ruff>=0.5.0",
 ]
@@ -31,3 +36,7 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.11"
 strict = true
 exclude = ['^\.venv/']
+mypy_path = ["."]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

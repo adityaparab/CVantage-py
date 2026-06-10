@@ -20,7 +20,7 @@ repos:
     hooks:
       - id: mypy-server
         name: mypy (server)
-        entry: uv run --project server mypy server/tests
+        entry: uv run --project server mypy server/app server/tests
         language: system
         pass_filenames: false
         files: ^server/.*\.py$
