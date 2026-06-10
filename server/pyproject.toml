@@ -11,6 +11,7 @@ dependencies = [
 	"pydantic-settings>=2.6.0",
 	"psutil>=6.1.0",
 	"pymongo>=4.9.0",
+	"slowapi>=0.1.9",
 	"structlog>=25.4.0",
 	"uvicorn>=0.35.0",
 ]
