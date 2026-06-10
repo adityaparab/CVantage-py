@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import UTC, datetime
 from pathlib import Path as FsPath
 from typing import Annotated
 
@@ -35,6 +36,10 @@ from app.resumes.schemas import (
 from app.resumes.schemas import Resume as SchemasResume
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
 
 def _ensure_user_id(current_user: CurrentUser) -> PydanticObjectId:
@@ -512,4 +517,64 @@ async def upload_resume(
         analysis_count=resume.analysis_count,
         created_at=resume.created_at,
         updated_at=resume.updated_at,
+    )
+
+
+# ============================================================================
+# Reparse endpoint (Issue #51)
+# ============================================================================
+
+
+@router.post(
+    "/{resume_id}/reparse",
+    summary="Re-parse a failed resume upload",
+    description=(
+        "Triggers a re-parse of an uploaded resume whose initial AI parsing failed. "
+        "The resume must be an uploaded file with uploadParse status 'failed'. "
+        "Returns the updated resume with the new parse result."
+    ),
+    response_model=ResumeResponse,
+    responses={
+        200: {
+            "description": "Re-parse completed.",
+        },
+        401: {
+            "model": ErrorEnvelope,
+            "description": "Missing or invalid bearer token.",
+        },
+        404: {
+            "model": ErrorEnvelope,
+            "description": "Resume not found.",
+        },
+        422: {
+            "model": ErrorEnvelope,
+            "description": "Resume is not eligible for re-parse.",
+        },
+    },
+)
+async def reparse_resume(
+    resume_id: Annotated[PydanticObjectId, FAPath(description="The resume's ObjectId")],
+    current_user: CurrentUser,
+) -> ResumeResponse:
+    """Re-parse a failed uploaded resume."""
+    user_id = _ensure_user_id(current_user)
+
+    # Use fake provider for now (real OpenAI integration comes in P4.2+)
+    from app.ai.llm import FakeLlmProvider
+    from app.resumes.parsing import reparse_resume as _reparse
+
+    provider = FakeLlmProvider()
+    result_dict = await _reparse(resume_id, user_id, provider)
+
+    return ResumeResponse(
+        id=str(result_dict["id"]),
+        name=str(result_dict["name"]),
+        source=str(result_dict["source"]),
+        json_resume=SchemasResume.model_validate(result_dict["json_resume"]),
+        analysis_status="unanalyzed",
+        original_text=None,
+        last_analyzed_at=None,
+        analysis_count=0,
+        created_at=_utcnow(),
+        updated_at=_utcnow(),
     )
