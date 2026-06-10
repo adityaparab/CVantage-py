@@ -5,3 +5,20 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
+
+[dependency-groups]
+dev = [
+	"commitizen>=3.28.0",
+	"pre-commit>=4.0.0",
+]
+
+[tool.commitizen]
+name = "cz_customize"
+version = "0.1.0"
+tag_format = "$version"
+
+[tool.commitizen.customize]
+schema = "<type>(<scope>): <subject>"
+schema_pattern = "^(feat|fix|chore|docs|refactor|test)\\((server|frontend|infra|docs|deps)\\):\\s.+$"
+commit_parser = "^(?P<change_type>feat|fix|chore|docs|refactor|test)\\((?P<scope>server|frontend|infra|docs|deps)\\):\\s(?P<message>.*)?$"
+change_type_order = ["feat", "fix", "refactor", "test", "docs", "chore"]
