@@ -29,6 +29,31 @@ def _mask_key(raw_key: str) -> str:
     return cleaned[-4:]
 
 
+async def validate_api_key(
+    provider: str, model_name: str, api_key: str, settings: Settings
+) -> bool:
+    """Live-ping the provider with the key to confirm it works before saving (#62).
+
+    Tests monkeypatch this to avoid network calls. Any error (auth, quota,
+    connectivity) is treated as an invalid key.
+    """
+    try:
+        from langchain_openai import ChatOpenAI
+        from pydantic import SecretStr
+
+        llm = ChatOpenAI(
+            model=model_name,
+            api_key=SecretStr(api_key),
+            max_tokens=1,  # type: ignore[call-arg]
+            timeout=min(settings.llm_timeout_seconds, 15),
+            max_retries=0,
+        )
+        await llm.ainvoke("ping")
+        return True
+    except Exception:
+        return False
+
+
 class AiModelService:
     """CRUD + resolution for AI models with encrypted API keys."""
 
@@ -98,6 +123,21 @@ class AiModelService:
         await model.save()
         return model
 
+    async def update(
+        self,
+        model_id: PydanticObjectId,
+        status: AiModelStatus | None = None,
+        usages: list[AiModelUsage] | None = None,
+    ) -> AiModel:
+        """Update a model's status and/or usages."""
+        model = await self.get(model_id)
+        if status is not None:
+            model.status = status
+        if usages is not None:
+            model.usages = usages
+        await model.save()
+        return model
+
     async def rotate_key(self, model_id: PydanticObjectId, new_api_key: str) -> AiModel:
         """Rotate (re-encrypt) the API key for a model."""
         model = await self.get(model_id)
@@ -105,6 +145,18 @@ class AiModelService:
         model.api_key_last4 = _mask_key(new_api_key)
         await model.save()
         return model
+
+    async def count_active_for_usage(
+        self, usage: AiModelUsage, exclude_id: PydanticObjectId | None = None
+    ) -> int:
+        """Count ACTIVE models serving *usage* (optionally excluding one id)."""
+        query: dict[str, Any] = {
+            "status": AiModelStatus.ACTIVE.value,
+            "usages": usage.value,
+        }
+        if exclude_id is not None:
+            query["_id"] = {"$ne": exclude_id}
+        return await AiModel.find(query).count()
 
     async def delete(self, model_id: PydanticObjectId) -> None:
         model = await self.get(model_id)

@@ -182,3 +182,91 @@ class AdminResumeListResponse(BaseModel):
             }
         }
     )
+
+
+class AdminModelCreateRequest(BaseModel):
+    """Register a new AI model. The API key is validated by a live ping before save."""
+
+    model_name: str = Field(alias="modelName", min_length=1, max_length=120)
+    provider: str = Field(min_length=1, max_length=80)
+    api_key: str = Field(alias="apiKey", min_length=8, max_length=400)
+    usages: list[str] = Field(min_length=1, description="resume_parsing|analysis|fallback")
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        protected_namespaces=(),
+        json_schema_extra={
+            "example": {
+                "modelName": "gpt-4o",
+                "provider": "openai",
+                "apiKey": "sk-...redacted...",
+                "usages": ["analysis", "fallback"],
+            }
+        },
+    )
+
+
+class AdminModelUpdateRequest(BaseModel):
+    """Update a model's status and/or usages."""
+
+    status: str | None = Field(default=None, description="active|disabled")
+    usages: list[str] | None = None
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "disabled"}})
+
+
+class AdminModelRotateRequest(BaseModel):
+    """Provide a new API key (validated + re-encrypted)."""
+
+    api_key: str = Field(alias="apiKey", min_length=8, max_length=400)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AdminModelResponse(BaseModel):
+    """AI model row — the key is always masked to its last 4 characters."""
+
+    id: str
+    model_name: str = Field(alias="modelName")
+    provider: str
+    api_key_last4: str = Field(alias="apiKeyLast4")
+    usages: list[str]
+    status: str
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        protected_namespaces=(),
+        json_schema_extra={
+            "example": {
+                "id": "665c3ef2c9d8f76b6e4f4f40",
+                "modelName": "gpt-4o",
+                "provider": "openai",
+                "apiKeyLast4": "3kF9",
+                "usages": ["analysis"],
+                "status": "active",
+            }
+        },
+    )
+
+
+class AdminModelListResponse(BaseModel):
+    items: list[AdminModelResponse]
+    total: int = Field(ge=0)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [
+                    {
+                        "id": "665c3ef2c9d8f76b6e4f4f40",
+                        "modelName": "gpt-4o",
+                        "provider": "openai",
+                        "apiKeyLast4": "3kF9",
+                        "usages": ["analysis"],
+                        "status": "active",
+                    }
+                ],
+                "total": 1,
+            }
+        }
+    )
