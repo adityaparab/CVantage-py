@@ -7,10 +7,10 @@ All fields are optional per the official schema; prune_empty() removes empty nes
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 # ============================================================================
 # Partial Date Support (YYYY, YYYY-MM, or YYYY-MM-DD)
@@ -274,3 +274,155 @@ def resume_to_clean_dict(resume: Resume) -> dict[str, Any]:
     data = resume.model_dump(exclude_none=True, mode="python")
     cleaned = prune_empty(data)
     return cleaned if isinstance(cleaned, dict) else {}
+
+
+# ============================================================================
+# CRUD API DTOs (Issue #41 — Resume CRUD)
+# ============================================================================
+
+
+class CreateResumeRequest(BaseModel):
+    """Request body for creating a new form-created resume."""
+
+    name: str = Field(..., min_length=1, max_length=200, examples=["My Resume"])
+    json_resume: Resume = Field(..., description="The full json-resume document")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Software Engineer Resume",
+                "json_resume": {
+                    "basics": {
+                        "name": "Jane Doe",
+                        "email": "jane@example.com",
+                        "label": "Full-Stack Developer",
+                    },
+                    "skills": [{"name": "Python", "level": "Expert"}],
+                },
+            }
+        }
+    )
+
+
+class UpdateResumeRequest(BaseModel):
+    """Request body for updating an existing resume. All fields optional."""
+
+    name: str | None = Field(
+        default=None, min_length=1, max_length=200, examples=["Updated Resume"]
+    )
+    json_resume: Resume | None = Field(default=None, description="Updated json-resume document")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Senior Engineer Resume",
+                "json_resume": {
+                    "basics": {
+                        "name": "Jane Doe",
+                        "label": "Senior Full-Stack Developer",
+                    },
+                },
+            }
+        }
+    )
+
+
+class ResumeResponse(BaseModel):
+    """Full resume response returned by get/create/update endpoints."""
+
+    id: str = Field(examples=["665c3ef2c9d8f76b6e4f4f20"])
+    name: str = Field(examples=["My Resume"])
+    source: str = Field(examples=["created"])
+    json_resume: Resume = Field(description="The full json-resume document")
+    analysis_status: str = Field(examples=["unanalyzed"])
+    original_text: str | None = Field(
+        default=None, description="Raw extracted text (uploaded resumes only)"
+    )
+    last_analyzed_at: datetime | None = Field(default=None, examples=["2026-06-10T12:00:00Z"])
+    analysis_count: int = Field(ge=0, examples=[0])
+    created_at: datetime = Field(examples=["2026-06-10T10:00:00Z"])
+    updated_at: datetime = Field(examples=["2026-06-10T10:30:00Z"])
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": "665c3ef2c9d8f76b6e4f4f20",
+                "name": "Software Engineer Resume",
+                "source": "created",
+                "json_resume": {
+                    "basics": {"name": "Jane Doe", "email": "jane@example.com"},
+                },
+                "analysis_status": "unanalyzed",
+                "original_text": None,
+                "last_analyzed_at": None,
+                "analysis_count": 0,
+                "created_at": "2026-06-10T10:00:00Z",
+                "updated_at": "2026-06-10T10:00:00Z",
+            }
+        },
+    )
+
+
+class ResumeListItem(BaseModel):
+    """Summary item for the paginated resume list."""
+
+    id: str = Field(examples=["665c3ef2c9d8f76b6e4f4f20"])
+    name: str = Field(examples=["My Resume"])
+    source: str = Field(examples=["created"])
+    analysis_status: str = Field(examples=["unanalyzed"])
+    last_analyzed_at: datetime | None = Field(default=None, examples=["2026-06-10T12:00:00Z"])
+    analysis_count: int = Field(ge=0, examples=[0])
+    created_at: datetime = Field(examples=["2026-06-10T10:00:00Z"])
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "665c3ef2c9d8f76b6e4f4f20",
+                "name": "Software Engineer Resume",
+                "source": "created",
+                "analysis_status": "unanalyzed",
+                "last_analyzed_at": None,
+                "analysis_count": 0,
+                "created_at": "2026-06-10T10:00:00Z",
+            }
+        }
+    )
+
+
+class ResumeListResponse(BaseModel):
+    """Paginated list of resumes for the current user."""
+
+    items: list[ResumeListItem]
+    total: int = Field(ge=0, examples=[1])
+    skip: int = Field(ge=0, examples=[0])
+    limit: int = Field(ge=1, le=100, examples=[20])
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [
+                    {
+                        "id": "665c3ef2c9d8f76b6e4f4f20",
+                        "name": "Software Engineer Resume",
+                        "source": "created",
+                        "analysis_status": "unanalyzed",
+                        "last_analyzed_at": None,
+                        "analysis_count": 0,
+                        "created_at": "2026-06-10T10:00:00Z",
+                    }
+                ],
+                "total": 1,
+                "skip": 0,
+                "limit": 20,
+            }
+        }
+    )
+
+
+class DeleteResumeResponse(BaseModel):
+    """Response after a successful soft-delete."""
+
+    status: str = Field("ok", examples=["ok"])
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "ok"}})
