@@ -24,6 +24,10 @@ class _FakeUser:
     full_name: str
     role: UserRole = UserRole.CANDIDATE
     status: UserStatus = UserStatus.ACTIVE
+    avatar_url: str | None = None
+    email_verified: bool = False
+    resume_count: int = 0
+    analysis_count: int = 0
 
 
 @pytest_asyncio.fixture
