@@ -22,6 +22,31 @@ async def update_current_user_profile(
     return current_user
 
 
+async def get_dashboard_stats(current_user: User) -> User:
+    """Return the user document (counters are already on the User model)."""
+    return current_user
+
+
+async def reconcile_user_counters(user_id: object) -> None:
+    """Recompute resume_count and analysis_count from source collections.
+
+    Used by the periodic reconcile job to fix counters that may have drifted
+    due to missed $inc operations (D15 — no multi-doc transactions).
+    """
+    from app.database.models import Analysis, Resume
+
+    user = await User.get(user_id)
+    if user is None:
+        return
+
+    actual_resume_count = await Resume.find({"user_id": user_id, "deleted_at": None}).count()
+    actual_analysis_count = await Analysis.find({"user_id": user_id}).count()
+
+    user.resume_count = actual_resume_count
+    user.analysis_count = actual_analysis_count
+    await user.save()
+
+
 async def change_current_user_password(
     current_user: User,
     payload: ChangePasswordRequest,

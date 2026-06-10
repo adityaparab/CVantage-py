@@ -145,3 +145,31 @@ async def test_change_password_success_updates_hash_and_revokes(
     assert user.password_hash is not None
     assert verify_password("NewStrongPass#2026", user.password_hash)
     assert revoked["called"] is True
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_stats_returns_counters(
+    users_client: tuple[AsyncClient, _FakeUser, dict[str, bool]],
+) -> None:
+    client, user, _ = users_client
+    user.resume_count = 5
+    user.analysis_count = 3
+
+    response = await client.get(
+        "/api/v1/users/me/stats",
+        headers={"Authorization": "Bearer token"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["resumeCount"] == 5
+    assert body["analysisCount"] == 3
+
+
+@pytest.mark.asyncio
+async def test_get_dashboard_stats_requires_auth(
+    users_client: tuple[AsyncClient, _FakeUser, dict[str, bool]],
+) -> None:
+    client, _, _ = users_client
+    response = await client.get("/api/v1/users/me/stats")
+    assert response.status_code == 401

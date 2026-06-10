@@ -32,3 +32,18 @@ class ChangePasswordRequest(BaseModel):
 
 class PasswordChangedResponse(BaseModel):
     status: str = Field(examples=["ok"])
+
+
+class DashboardStatsResponse(BaseModel):
+    resume_count: int = Field(alias="resumeCount", ge=0, examples=[3])
+    analysis_count: int = Field(alias="analysisCount", ge=0, examples=[7])
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "resumeCount": 3,
+                "analysisCount": 7,
+            }
+        },
+    )
