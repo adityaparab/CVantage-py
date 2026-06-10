@@ -1,8 +1,10 @@
-"""Pydantic schemas for the admin module (issue #59)."""
+"""Pydantic schemas for the admin module (issues #59, #60)."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class AdminStatsResponse(BaseModel):
@@ -22,3 +24,104 @@ class AdminStatsResponse(BaseModel):
             }
         },
     )
+
+
+class AdminUserListItem(BaseModel):
+    """Row in the admin user table (no resume/analysis content — metadata only)."""
+
+    id: str
+    full_name: str = Field(alias="fullName")
+    email: EmailStr
+    role: str
+    status: str
+    registration_date: datetime = Field(alias="registrationDate")
+    last_active_at: datetime | None = Field(default=None, alias="lastActiveAt")
+    resume_count: int = Field(alias="resumeCount", ge=0)
+    analysis_count: int = Field(alias="analysisCount", ge=0)
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "example": {
+                "id": "665c3ef2c9d8f76b6e4f4f01",
+                "fullName": "Jane Candidate",
+                "email": "jane@example.com",
+                "role": "candidate",
+                "status": "active",
+                "registrationDate": "2026-01-15T09:30:00Z",
+                "lastActiveAt": "2026-06-10T18:00:00Z",
+                "resumeCount": 3,
+                "analysisCount": 7,
+            }
+        },
+    )
+
+
+class AdminUserListResponse(BaseModel):
+    """Paginated list of users for the admin console."""
+
+    items: list[AdminUserListItem]
+    total: int = Field(ge=0)
+    skip: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [
+                    {
+                        "id": "665c3ef2c9d8f76b6e4f4f01",
+                        "fullName": "Jane Candidate",
+                        "email": "jane@example.com",
+                        "role": "candidate",
+                        "status": "active",
+                        "registrationDate": "2026-01-15T09:30:00Z",
+                        "lastActiveAt": "2026-06-10T18:00:00Z",
+                        "resumeCount": 3,
+                        "analysisCount": 7,
+                    }
+                ],
+                "total": 1,
+                "skip": 0,
+                "limit": 20,
+            }
+        }
+    )
+
+
+class AdminUserUpdateRequest(BaseModel):
+    """Editable user fields for an admin (full name / email)."""
+
+    full_name: str | None = Field(default=None, alias="fullName", min_length=1, max_length=200)
+    email: EmailStr | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AdminPasswordResetRequest(BaseModel):
+    """Admin password reset — set a temporary password or trigger a reset email."""
+
+    new_password: str | None = Field(
+        default=None,
+        alias="newPassword",
+        min_length=8,
+        max_length=200,
+        description="If set, used as a temporary password; otherwise a reset email is sent.",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AdminPasswordResetResponse(BaseModel):
+    status: str = "ok"
+    method: str = Field(description="'temp_password' or 'reset_email'")
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"status": "ok", "method": "reset_email"}}
+    )
+
+
+class AdminActionResponse(BaseModel):
+    status: str = "ok"
+
+    model_config = ConfigDict(json_schema_extra={"example": {"status": "ok"}})
