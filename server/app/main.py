@@ -1,15 +1,14 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from time import perf_counter
 from uuid import uuid4
 
 import structlog
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
 from app.api import api_router
+from app.common import register_error_handlers
 from app.config import get_settings
 from app.database import close_database, init_database
 from app.observability import configure_logging
@@ -44,16 +43,6 @@ def create_app() -> FastAPI:
         started = perf_counter()
         try:
             response = await call_next(request)
-        except Exception:
-            duration_ms = round((perf_counter() - started) * 1000, 2)
-            logger.exception(
-                "request.error",
-                method=request.method,
-                path=request.url.path,
-                duration_ms=duration_ms,
-                headers=dict(request.headers),
-            )
-            raise
         finally:
             structlog.contextvars.clear_contextvars()
 
@@ -70,20 +59,7 @@ def create_app() -> FastAPI:
         )
         return response
 
-    @app.exception_handler(404)
-    async def not_found_handler(request: Request, _: Exception) -> JSONResponse:
-        if request.url.path.startswith("/api/v1"):
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "status_code": 404,
-                    "error": "Not Found",
-                    "message": "Resource not found",
-                    "path": request.url.path,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                },
-            )
-        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    register_error_handlers(app)
 
     return app
 

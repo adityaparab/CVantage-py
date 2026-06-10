@@ -22,4 +22,5 @@ async def test_unknown_api_route_returns_json_envelope() -> None:
     assert response.status_code == 404
     assert data["status_code"] == 404
     assert data["error"] == "Not Found"
+    assert data["message"] == "Not Found"
     assert data["path"] == "/api/v1/does-not-exist"
