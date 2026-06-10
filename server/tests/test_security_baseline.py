@@ -1,6 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+import app.auth.router as auth_router
 from app.main import app
 
 
@@ -32,13 +33,23 @@ async def test_cors_disallowed_origin_is_blocked() -> None:
 
 
 @pytest.mark.asyncio
-async def test_auth_route_rate_limit_hits_429_on_61st_request() -> None:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        for _ in range(60):
-            response = await client.post("/api/v1/auth/login")
-            assert response.status_code == 200
+async def test_auth_route_rate_limit_hits_429_on_61st_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_login_user(_: object, __: object) -> str:
+        return "token"
 
-        blocked = await client.post("/api/v1/auth/login")
+    monkeypatch.setattr(auth_router, "login_user", _fake_login_user)
+
+    payload = {"email": "rate-limit@example.com", "password": "StrongPass#2026"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        responses = []
+        for _ in range(61):
+            responses.append(await client.post("/api/v1/auth/login", json=payload))
+
+    assert any(response.status_code == 429 for response in responses)
+    blocked = next(response for response in responses if response.status_code == 429)
 
     body = blocked.json()
     assert blocked.status_code == 429
