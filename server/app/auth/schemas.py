@@ -33,3 +33,7 @@ class UserMeResponse(BaseModel):
     role: str
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class LogoutResponse(BaseModel):
+    status: str = Field(examples=["ok"])
