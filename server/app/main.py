@@ -41,6 +41,10 @@ OPENAPI_TAGS = [
         "name": "analyses",
         "description": "Resume analysis pipeline endpoints.",
     },
+    {
+        "name": "notifications",
+        "description": "In-app bell notifications for analysis lifecycle events.",
+    },
 ]
 
 
