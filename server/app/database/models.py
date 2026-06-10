@@ -173,6 +173,7 @@ class AuditAction(str, Enum):
     USER_REGISTER = "user.register"
     ADMIN_USER_UPDATE = "admin.user.update"
     ADMIN_USER_DEACTIVATE = "admin.user.deactivate"
+    ADMIN_USER_REACTIVATE = "admin.user.reactivate"
     ADMIN_PASSWORD_RESET = "admin.user.password_reset"
     ADMIN_RESUME_DELETE = "admin.resume.delete"
     ADMIN_MODEL_ADD = "admin.model.add"
