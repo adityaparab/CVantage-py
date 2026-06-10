@@ -7,7 +7,20 @@
   "scripts": {
     "dev": "echo \"frontend scaffold\"",
     "build": "echo \"frontend scaffold\"",
-    "lint": "echo \"frontend scaffold\"",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --check .",
+    "typecheck": "tsc --noEmit",
     "test": "echo \"frontend scaffold\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.6.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.6.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.8.0",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.0.0"
   }
 }
