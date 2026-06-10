@@ -1,0 +1,46 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^server/.*\.py$
+      - id: ruff-format
+        files: ^server/.*\.py$
+
+  - repo: local
+    hooks:
+      - id: mypy-server
+        name: mypy (server)
+        entry: uv run --project server mypy server/tests
+        language: system
+        pass_filenames: false
+        files: ^server/.*\.py$
+
+      - id: pytest-server-related
+        name: pytest (server related)
+        entry: uv run --project server pytest server/tests
+        language: system
+        pass_filenames: false
+        files: ^server/.*\.py$
+
+      - id: eslint-frontend
+        name: eslint (frontend)
+        entry: pnpm --dir frontend lint
+        language: system
+        pass_filenames: false
+        files: ^frontend/.*\.(ts|tsx|js|jsx|mjs|cjs)$
+
+      - id: prettier-frontend
+        name: prettier (frontend)
+        entry: pnpm --dir frontend format
+        language: system
+        pass_filenames: false
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json|css|md|mjs|cjs)$
+
+      - id: vitest-frontend-related
+        name: vitest (frontend related)
+        entry: pnpm --dir frontend test
+        language: system
+        pass_filenames: false
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$

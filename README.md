@@ -19,3 +19,6 @@ Monorepo scaffold for the CVantage platform.
 4. Install frontend dependencies:
 	- `cd frontend`
 	- `pnpm install`
+5. Install commit hooks:
+	- `cd ..` (repo root)
+	- `pre-commit install`
