@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535)
     app_name: str = "CVantage API"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    mongodb_uri: str = "mongodb://localhost:27017/cvantage"
+    mongodb_db_name: str = "cvantage"
 
 
 @lru_cache(maxsize=1)
