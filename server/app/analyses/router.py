@@ -150,6 +150,12 @@ async def get_analysis_by_id(
     analysis = await Analysis.find_one({"_id": analysis_id, "user_id": user_id})
     if analysis is None:
         raise HTTPException(status_code=404, detail={"message": "Analysis not found"})
+
+    # Auto-clear notification on visit (visit-clears rule)
+    from app.notifications.service import auto_clear_for_analysis
+
+    await auto_clear_for_analysis(analysis_id, user_id)
+
     return _analysis_to_response(analysis)
 
 

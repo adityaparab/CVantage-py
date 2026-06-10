@@ -238,6 +238,7 @@ async def run_full_pipeline(
     """
     analysis.started_at = _utcnow()
     await analysis.save()
+    await _notify_analysis_start(analysis)
 
     result = None
     try:
@@ -256,6 +257,7 @@ async def run_full_pipeline(
 
         # Update resume rollup
         await _update_resume_rollup(analysis.resume_id, ResumeAnalysisStatus.COMPLETED)
+        await _notify_analysis_complete(analysis)
 
     except Exception as e:
         analysis.status = AnalysisStatus.FAILED
@@ -267,6 +269,7 @@ async def run_full_pipeline(
         await analysis.save()
 
         await _update_resume_rollup(analysis.resume_id, ResumeAnalysisStatus.FAILED)
+        await _notify_analysis_failed(analysis)
         logger.error("analysis.pipeline_failed", analysis_id=str(analysis.id), error=str(e))
 
 
@@ -436,6 +439,42 @@ async def _update_resume_rollup(
     resume.last_analyzed_at = _utcnow()
     resume.analysis_count += 1
     await resume.save()
+
+
+async def _notify_analysis_start(analysis: Analysis) -> None:
+    """Create in-progress notification when analysis starts."""
+    from app.notifications.service import create_analysis_start_notification
+
+    assert analysis.id is not None
+    await create_analysis_start_notification(
+        user_id=analysis.user_id,
+        analysis_id=analysis.id,
+        analysis_name=analysis.name,
+    )
+
+
+async def _notify_analysis_complete(analysis: Analysis) -> None:
+    """Create completed notification."""
+    from app.notifications.service import create_analysis_complete_notification
+
+    assert analysis.id is not None
+    await create_analysis_complete_notification(
+        user_id=analysis.user_id,
+        analysis_id=analysis.id,
+        analysis_name=analysis.name,
+    )
+
+
+async def _notify_analysis_failed(analysis: Analysis) -> None:
+    """Create failed notification."""
+    from app.notifications.service import create_analysis_failed_notification
+
+    assert analysis.id is not None
+    await create_analysis_failed_notification(
+        user_id=analysis.user_id,
+        analysis_id=analysis.id,
+        analysis_name=analysis.name,
+    )
 
 
 def _resume_to_text(resume: DbJsonResume) -> str:
