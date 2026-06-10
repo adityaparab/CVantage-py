@@ -3,8 +3,12 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
+from urllib.parse import urljoin
 
+from authlib.integrations.httpx_client import AsyncOAuth2Client  # type: ignore[import-untyped]
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 from starlette.requests import Request
@@ -17,6 +21,8 @@ from app.database.models import (
     AuditAction,
     AuditLog,
     AuthToken,
+    OAuthIdentity,
+    OAuthProvider,
     TokenKind,
     User,
     UserRole,
@@ -32,6 +38,20 @@ _PASSWORD_POLICY_DETAILS = {
 }
 _SPECIAL_CHAR_RE = re.compile(r"[^A-Za-z0-9]")
 _DUMMY_PASSWORD_HASH = hash_password("cvantage-dummy-password")
+_GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+_LINKEDIN_AUTHORIZE_URL = "https://www.linkedin.com/oauth/v2/authorization"
+_LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
+_LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo"
+
+
+@dataclass(slots=True)
+class OAuthProfile:
+    provider_user_id: str
+    email: str | None
+    email_verified: bool
+    full_name: str | None
 
 
 def _utcnow() -> datetime:
@@ -86,6 +106,182 @@ async def _issue_refresh_token(user: User, settings: Settings, request: Request)
 
 def _invalid_refresh_token_error() -> HTTPException:
     return HTTPException(status_code=401, detail={"message": "Invalid refresh token"})
+
+
+def oauth_provider_flags(settings: Settings) -> dict[str, bool]:
+    return {
+        "google": bool(settings.oauth_google_client_id and settings.oauth_google_client_secret),
+        "linkedin": bool(
+            settings.oauth_linkedin_client_id and settings.oauth_linkedin_client_secret
+        ),
+    }
+
+
+def _provider_credentials(provider: OAuthProvider, settings: Settings) -> tuple[str, str]:
+    if provider is OAuthProvider.GOOGLE:
+        client_id = settings.oauth_google_client_id
+        client_secret = settings.oauth_google_client_secret
+    else:
+        client_id = settings.oauth_linkedin_client_id
+        client_secret = settings.oauth_linkedin_client_secret
+
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=404, detail={"message": "OAuth provider is disabled"})
+    return client_id, client_secret
+
+
+def _oauth_redirect_uri(settings: Settings, provider: OAuthProvider) -> str:
+    base = settings.oauth_callback_base_url.rstrip("/") + "/"
+    return urljoin(base, f"{provider.value}/callback")
+
+
+def _oauth_client(provider: OAuthProvider, settings: Settings) -> AsyncOAuth2Client:
+    client_id, client_secret = _provider_credentials(provider, settings)
+    scope = "openid email profile"
+    return AsyncOAuth2Client(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=_oauth_redirect_uri(settings, provider),
+        scope=scope,
+    )
+
+
+def _oauth_authorize_url(provider: OAuthProvider) -> str:
+    return _GOOGLE_AUTHORIZE_URL if provider is OAuthProvider.GOOGLE else _LINKEDIN_AUTHORIZE_URL
+
+
+def _oauth_token_url(provider: OAuthProvider) -> str:
+    return _GOOGLE_TOKEN_URL if provider is OAuthProvider.GOOGLE else _LINKEDIN_TOKEN_URL
+
+
+def _oauth_userinfo_url(provider: OAuthProvider) -> str:
+    return _GOOGLE_USERINFO_URL if provider is OAuthProvider.GOOGLE else _LINKEDIN_USERINFO_URL
+
+
+async def build_oauth_authorization_url(
+    provider: OAuthProvider,
+    settings: Settings,
+    state: str,
+    nonce: str,
+) -> str:
+    async with _oauth_client(provider, settings) as client:
+        url, _ = client.create_authorization_url(
+            _oauth_authorize_url(provider),
+            state=state,
+            nonce=nonce,
+        )
+    return cast(str, url)
+
+
+async def exchange_oauth_code_for_profile(
+    provider: OAuthProvider,
+    code: str,
+    nonce: str,
+    settings: Settings,
+) -> OAuthProfile:
+    async with _oauth_client(provider, settings) as client:
+        token = await client.fetch_token(
+            _oauth_token_url(provider),
+            code=code,
+            grant_type="authorization_code",
+        )
+        response = await client.get(_oauth_userinfo_url(provider), token=token)
+
+    payload = cast(dict[str, Any], response.json())
+    if provider is OAuthProvider.GOOGLE:
+        provider_user_id = str(payload.get("sub") or "")
+        email_verified = bool(payload.get("email_verified", False))
+        full_name = payload.get("name")
+    else:
+        provider_user_id = str(payload.get("sub") or payload.get("id") or "")
+        email_verified = bool(payload.get("email_verified", payload.get("verified", False)))
+        full_name = payload.get("name") or payload.get("localizedFirstName")
+
+    if not provider_user_id:
+        raise HTTPException(status_code=400, detail={"message": "Invalid oauth profile"})
+
+    _ = nonce
+    return OAuthProfile(
+        provider_user_id=provider_user_id,
+        email=payload.get("email"),
+        email_verified=email_verified,
+        full_name=full_name,
+    )
+
+
+async def oauth_callback_login(
+    provider: OAuthProvider,
+    code: str,
+    nonce: str,
+    settings: Settings,
+    request: Request,
+) -> tuple[str, str]:
+    profile = await exchange_oauth_code_for_profile(provider, code, nonce, settings)
+
+    user = await User.find_one(
+        {
+            "oauth_identities": {
+                "$elemMatch": {
+                    "provider": provider,
+                    "provider_user_id": profile.provider_user_id,
+                }
+            }
+        }
+    )
+
+    if user is None:
+        if not profile.email or not profile.email_verified:
+            raise HTTPException(status_code=400, detail={"message": "Verified email is required"})
+
+        user = await User.find_one(User.email == profile.email.lower().strip())
+        identity = OAuthIdentity(
+            provider=provider,
+            provider_user_id=profile.provider_user_id,
+            email=profile.email,
+        )
+        if user is None:
+            user = User(
+                email=profile.email,
+                full_name=profile.full_name or profile.email.split("@", maxsplit=1)[0],
+                password_hash=None,
+                role=UserRole.CANDIDATE,
+                status=UserStatus.ACTIVE,
+                oauth_identities=[identity],
+                email_verified=True,
+            )
+            try:
+                await user.insert()
+            except DuplicateKeyError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"message": "OAuth identity already linked"},
+                ) from exc
+        else:
+            user.oauth_identities.append(identity)
+            user.email_verified = user.email_verified or profile.email_verified
+            try:
+                await user.save()
+            except DuplicateKeyError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail={"message": "OAuth identity already linked"},
+                ) from exc
+
+    if user.status == UserStatus.DEACTIVATED:
+        raise HTTPException(status_code=403, detail={"message": "Account is deactivated"})
+
+    await AuditLog(
+        actor_id=user.id,
+        action=AuditAction.USER_LOGIN,
+        target_type="user",
+        target_id=user.id,
+        meta={"provider": provider.value, "oauth": True},
+        ip=_client_ip(request),
+    ).insert()
+
+    access_token = create_access_token(str(user.id), settings)
+    refresh_token = await _issue_refresh_token(user, settings, request)
+    return access_token, refresh_token
 
 
 def _validate_password_strength(password: str) -> None:

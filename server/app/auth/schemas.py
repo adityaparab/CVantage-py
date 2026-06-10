@@ -37,3 +37,14 @@ class UserMeResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     status: str = Field(examples=["ok"])
+
+
+class OAuthProvidersResponse(BaseModel):
+    google: bool
+    linkedin: bool
+
+
+class OAuthAuthorizationResponse(BaseModel):
+    authorization_url: str = Field(alias="authorizationUrl")
+
+    model_config = ConfigDict(populate_by_name=True)

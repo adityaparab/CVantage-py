@@ -388,3 +388,116 @@ async def test_expired_access_with_valid_refresh_recovers(auth_client: AsyncClie
         headers={"Authorization": f"Bearer {new_access}"},
     )
     assert recovered_me.status_code == 200
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_oauth_flags_off_reports_false_and_routes_404(auth_client: AsyncClient) -> None:
+    providers = await auth_client.get("/api/v1/auth/providers")
+    assert providers.status_code == 200
+    assert providers.json() == {"google": False, "linkedin": False}
+
+    login_disabled = await auth_client.get("/api/v1/auth/oauth/google/login")
+    assert login_disabled.status_code == 404
+
+    callback_disabled = await auth_client.get(
+        "/api/v1/auth/oauth/google/callback",
+        params={"code": "mock", "state": "mock"},
+    )
+    assert callback_disabled.status_code == 404
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_oauth_mocked_callback_new_user_and_existing_email_link(
+    auth_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        auth_router,
+        "oauth_provider_flags",
+        lambda _: {"google": True, "linkedin": False},
+    )
+
+    async def _build_url(*_: object) -> str:
+        return "https://provider.example/authorize"
+
+    async def _callback_login(
+        _: object,
+        code: str,
+        __: str,
+        ___: object,
+        ____: object,
+    ) -> tuple[str, str]:
+        if code == "duplicate":
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "OAuth identity already linked"},
+            )
+        if code == "existing-link":
+            return ("access-existing", "refresh-existing")
+        return ("access-new", "refresh-new")
+
+    monkeypatch.setattr(auth_router, "build_oauth_authorization_url", _build_url)
+    monkeypatch.setattr(auth_router, "oauth_callback_login", _callback_login)
+
+    providers = await auth_client.get("/api/v1/auth/providers")
+    assert providers.status_code == 200
+    assert providers.json() == {"google": True, "linkedin": False}
+
+    login_start = await auth_client.get("/api/v1/auth/oauth/google/login")
+    assert login_start.status_code == 200
+    assert login_start.json()["authorizationUrl"] == "https://provider.example/authorize"
+
+    state_cookie = login_start.cookies.get("cv_oauth_google_state")
+    assert state_cookie is not None
+
+    new_user = await auth_client.get(
+        "/api/v1/auth/oauth/google/callback",
+        params={"code": "new-user", "state": state_cookie},
+    )
+    assert new_user.status_code == 200
+    assert new_user.json()["accessToken"] == "access-new"
+
+    relogin_start = await auth_client.get("/api/v1/auth/oauth/google/login")
+    existing_state = relogin_start.cookies.get("cv_oauth_google_state")
+    assert existing_state is not None
+
+    existing_link = await auth_client.get(
+        "/api/v1/auth/oauth/google/callback",
+        params={"code": "existing-link", "state": existing_state},
+    )
+    assert existing_link.status_code == 200
+    assert existing_link.json()["accessToken"] == "access-existing"
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_oauth_mocked_duplicate_identity_conflict(
+    auth_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        auth_router,
+        "oauth_provider_flags",
+        lambda _: {"google": True, "linkedin": False},
+    )
+
+    async def _build_url(*_: object) -> str:
+        return "https://provider.example/authorize"
+
+    async def _callback_login(*_: object) -> tuple[str, str]:
+        raise HTTPException(status_code=409, detail={"message": "OAuth identity already linked"})
+
+    monkeypatch.setattr(auth_router, "build_oauth_authorization_url", _build_url)
+    monkeypatch.setattr(auth_router, "oauth_callback_login", _callback_login)
+
+    login_start = await auth_client.get("/api/v1/auth/oauth/google/login")
+    state_cookie = login_start.cookies.get("cv_oauth_google_state")
+    assert state_cookie is not None
+
+    conflict = await auth_client.get(
+        "/api/v1/auth/oauth/google/callback",
+        params={"code": "duplicate", "state": state_cookie},
+    )
+    assert conflict.status_code == 409

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     auth_refresh_token_ttl_days: int = Field(default=30, ge=1)
     auth_refresh_cookie_name: str = "cv_refresh_token"
     auth_cookie_secure: bool = True
+    oauth_callback_base_url: str = "http://localhost:8000/api/v1/auth/oauth"
+    oauth_google_client_id: str | None = None
+    oauth_google_client_secret: str | None = None
+    oauth_linkedin_client_id: str | None = None
+    oauth_linkedin_client_secret: str | None = None
     mongodb_uri: str = "mongodb://localhost:27017/cvantage"
     mongodb_db_name: str = "cvantage"
     ready_min_disk_free_mb: int = Field(default=128, ge=1)
