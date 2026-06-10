@@ -4,13 +4,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from app.auth.schemas import (
+    AcceptedResponse,
     AuthTokenResponse,
+    ForgotPasswordRequest,
     LoginRequest,
     LogoutResponse,
     OAuthAuthorizationResponse,
     OAuthProvidersResponse,
     RegisterRequest,
+    ResetPasswordRequest,
+    SuccessResponse,
     UserMeResponse,
+    VerifyEmailRequest,
 )
 from app.auth.service import (
     build_oauth_authorization_url,
@@ -20,6 +25,9 @@ from app.auth.service import (
     oauth_provider_flags,
     refresh_user_session,
     register_user,
+    request_password_reset,
+    reset_password_with_token,
+    verify_email_with_token,
 )
 from app.common.schemas import ErrorEnvelope
 from app.config import Settings, get_settings
@@ -494,3 +502,111 @@ async def oauth_callback(
         path="/api/v1/auth",
     )
     return AuthTokenResponse(accessToken=access_token, tokenType="bearer")
+
+
+@router.post(
+    "/forgot-password",
+    summary="Request password reset",
+    description=(
+        "Queues a password reset email when the account exists. Always returns 202 to "
+        "avoid user enumeration."
+    ),
+    response_model=AcceptedResponse,
+    responses={
+        202: {
+            "description": "Password reset request accepted.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "accepted",
+                    }
+                }
+            },
+        }
+    },
+)
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    response: Response,
+) -> AcceptedResponse:
+    response.status_code = 202
+    await request_password_reset(payload.email, settings)
+    return AcceptedResponse(status="accepted")
+
+
+@router.post(
+    "/reset-password",
+    summary="Reset password with token",
+    description="Consumes a single-use password reset token and updates user password.",
+    response_model=SuccessResponse,
+    responses={
+        200: {
+            "description": "Password reset completed.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "ok",
+                    }
+                }
+            },
+        },
+        400: {
+            "model": ErrorEnvelope,
+            "description": "Reset token is invalid, reused, or expired.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 400,
+                        "error": "Bad Request",
+                        "message": "Invalid or expired token",
+                        "path": "/api/v1/auth/reset-password",
+                    }
+                }
+            },
+        },
+    },
+)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SuccessResponse:
+    await reset_password_with_token(payload.token, payload.new_password, settings)
+    return SuccessResponse(status="ok")
+
+
+@router.post(
+    "/verify-email",
+    summary="Verify email with token",
+    description="Consumes a single-use email verification token and marks account as verified.",
+    response_model=SuccessResponse,
+    responses={
+        200: {
+            "description": "Email verification succeeded.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "ok",
+                    }
+                }
+            },
+        },
+        400: {
+            "model": ErrorEnvelope,
+            "description": "Verification token is invalid, reused, or expired.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 400,
+                        "error": "Bad Request",
+                        "message": "Invalid or expired token",
+                        "path": "/api/v1/auth/verify-email",
+                    }
+                }
+            },
+        },
+    },
+)
+async def verify_email(payload: VerifyEmailRequest) -> SuccessResponse:
+    await verify_email_with_token(payload.token)
+    return SuccessResponse(status="ok")

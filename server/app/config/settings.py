@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     oauth_google_client_secret: str | None = None
     oauth_linkedin_client_id: str | None = None
     oauth_linkedin_client_secret: str | None = None
+    mail_driver: Literal["console", "smtp"] = "console"
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "noreply@cvantage.local"
     mongodb_uri: str = "mongodb://localhost:27017/cvantage"
     mongodb_db_name: str = "cvantage"
     ready_min_disk_free_mb: int = Field(default=128, ge=1)
