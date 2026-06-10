@@ -4,10 +4,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api import api_router
+from app.config import get_settings
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CVantage API")
+    settings = get_settings()
+    app = FastAPI(title=settings.app_name)
     app.include_router(api_router)
 
     @app.exception_handler(404)
