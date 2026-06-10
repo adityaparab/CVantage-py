@@ -1,20 +1,43 @@
+import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from app.auth.schemas import (
     AuthTokenResponse,
     LoginRequest,
     LogoutResponse,
+    OAuthAuthorizationResponse,
+    OAuthProvidersResponse,
     RegisterRequest,
     UserMeResponse,
 )
-from app.auth.service import login_user, logout_user_session, refresh_user_session, register_user
+from app.auth.service import (
+    build_oauth_authorization_url,
+    login_user,
+    logout_user_session,
+    oauth_callback_login,
+    oauth_provider_flags,
+    refresh_user_session,
+    register_user,
+)
 from app.common.schemas import ErrorEnvelope
 from app.config import Settings, get_settings
+from app.database.models import OAuthProvider
 from app.security.rate_limit import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _parse_provider_or_404(provider: str) -> OAuthProvider:
+    try:
+        parsed = OAuthProvider(provider)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "OAuth provider is disabled"},
+        ) from exc
+    return parsed
 
 
 @router.post(
@@ -275,3 +298,199 @@ async def logout(
     await logout_user_session(refresh_token, request)
     response.delete_cookie(key=settings.auth_refresh_cookie_name, path="/api/v1/auth")
     return LogoutResponse(status="ok")
+
+
+@router.get(
+    "/providers",
+    summary="Get OAuth provider availability",
+    description="Returns whether Google and LinkedIn OAuth logins are currently enabled.",
+    response_model=OAuthProvidersResponse,
+    responses={
+        200: {
+            "description": "OAuth provider availability flags.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "google": True,
+                        "linkedin": False,
+                    }
+                }
+            },
+        }
+    },
+)
+async def providers(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OAuthProvidersResponse:
+    flags = oauth_provider_flags(settings)
+    return OAuthProvidersResponse(google=flags["google"], linkedin=flags["linkedin"])
+
+
+@router.get(
+    "/oauth/{provider}/login",
+    summary="Start OAuth login",
+    description="Initiates OAuth/OIDC login by redirecting to the configured provider.",
+    response_model=OAuthAuthorizationResponse,
+    responses={
+        200: {
+            "description": "Provider authorization URL and CSRF cookies are issued.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth?...",
+                    }
+                }
+            },
+        },
+        404: {
+            "model": ErrorEnvelope,
+            "description": "OAuth provider is disabled.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 404,
+                        "error": "Not Found",
+                        "message": "OAuth provider is disabled",
+                        "path": "/api/v1/auth/oauth/google/login",
+                    }
+                }
+            },
+        },
+    },
+)
+async def oauth_login(
+    provider: str,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OAuthAuthorizationResponse:
+    parsed_provider = _parse_provider_or_404(provider)
+    flags = oauth_provider_flags(settings)
+    if not flags[parsed_provider.value]:
+        raise HTTPException(status_code=404, detail={"message": "OAuth provider is disabled"})
+
+    state = secrets.token_urlsafe(24)
+    nonce = secrets.token_urlsafe(24)
+    authorization_url = await build_oauth_authorization_url(parsed_provider, settings, state, nonce)
+    cookie_path = f"/api/v1/auth/oauth/{parsed_provider.value}"
+    response.set_cookie(
+        key=f"cv_oauth_{parsed_provider.value}_state",
+        value=state,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        max_age=600,
+        path=cookie_path,
+    )
+    response.set_cookie(
+        key=f"cv_oauth_{parsed_provider.value}_nonce",
+        value=nonce,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        max_age=600,
+        path=cookie_path,
+    )
+    return OAuthAuthorizationResponse(authorizationUrl=authorization_url)
+
+
+@router.get(
+    "/oauth/{provider}/callback",
+    summary="Handle OAuth callback",
+    description=(
+        "Validates OAuth state/nonce and completes login by linking or creating the user account."
+    ),
+    response_model=AuthTokenResponse,
+    responses={
+        200: {
+            "description": "OAuth callback succeeded and access token issued.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "accessToken": "signed-token",
+                        "tokenType": "bearer",
+                    }
+                }
+            },
+        },
+        400: {
+            "model": ErrorEnvelope,
+            "description": "Invalid callback state or profile payload.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 400,
+                        "error": "Bad Request",
+                        "message": "Invalid oauth state",
+                        "path": "/api/v1/auth/oauth/google/callback",
+                    }
+                }
+            },
+        },
+        404: {
+            "model": ErrorEnvelope,
+            "description": "OAuth provider is disabled.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 404,
+                        "error": "Not Found",
+                        "message": "OAuth provider is disabled",
+                        "path": "/api/v1/auth/oauth/google/callback",
+                    }
+                }
+            },
+        },
+        409: {
+            "model": ErrorEnvelope,
+            "description": "OAuth identity conflicts with another account.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 409,
+                        "error": "Conflict",
+                        "message": "OAuth identity already linked",
+                        "path": "/api/v1/auth/oauth/google/callback",
+                    }
+                }
+            },
+        },
+    },
+)
+async def oauth_callback(
+    provider: str,
+    code: Annotated[str, Query(min_length=1)],
+    state: Annotated[str, Query(min_length=1)],
+    request: Request,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AuthTokenResponse:
+    parsed_provider = _parse_provider_or_404(provider)
+    flags = oauth_provider_flags(settings)
+    if not flags[parsed_provider.value]:
+        raise HTTPException(status_code=404, detail={"message": "OAuth provider is disabled"})
+
+    expected_state = request.cookies.get(f"cv_oauth_{parsed_provider.value}_state")
+    nonce = request.cookies.get(f"cv_oauth_{parsed_provider.value}_nonce")
+    if not expected_state or expected_state != state or not nonce:
+        raise HTTPException(status_code=400, detail={"message": "Invalid oauth state"})
+
+    access_token, refresh_token = await oauth_callback_login(
+        parsed_provider,
+        code,
+        nonce,
+        settings,
+        request,
+    )
+    cookie_path = f"/api/v1/auth/oauth/{parsed_provider.value}"
+    response.delete_cookie(key=f"cv_oauth_{parsed_provider.value}_state", path=cookie_path)
+    response.delete_cookie(key=f"cv_oauth_{parsed_provider.value}_nonce", path=cookie_path)
+    response.set_cookie(
+        key=settings.auth_refresh_cookie_name,
+        value=refresh_token,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        max_age=settings.auth_refresh_token_ttl_days * 24 * 3600,
+        path="/api/v1/auth",
+    )
+    return AuthTokenResponse(accessToken=access_token, tokenType="bearer")
