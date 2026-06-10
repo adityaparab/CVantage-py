@@ -6,11 +6,16 @@ from app.auth.dependencies import CurrentUser
 from app.common.schemas import ErrorEnvelope
 from app.users.schemas import (
     ChangePasswordRequest,
+    DashboardStatsResponse,
     PasswordChangedResponse,
     UserProfileUpdateRequest,
     UserSelfResponse,
 )
-from app.users.service import change_current_user_password, update_current_user_profile
+from app.users.service import (
+    change_current_user_password,
+    get_dashboard_stats,
+    update_current_user_profile,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -172,3 +177,35 @@ async def change_password(
 ) -> PasswordChangedResponse:
     await change_current_user_password(current_user, payload)
     return PasswordChangedResponse(status="ok")
+
+
+@router.get(
+    "/me/stats",
+    summary="Get dashboard statistics",
+    description=(
+        "Returns the authenticated user's dashboard counters: "
+        "resume count and analysis count. Counters are maintained "
+        "atomically via $inc on create/delete operations."
+    ),
+    response_model=DashboardStatsResponse,
+    responses={
+        200: {
+            "description": "Dashboard statistics.",
+            "content": {
+                "application/json": {
+                    "example": {"resumeCount": 3, "analysisCount": 7},
+                }
+            },
+        },
+        401: {
+            "model": ErrorEnvelope,
+            "description": "Missing or invalid bearer token.",
+        },
+    },
+)
+async def me_stats(current_user: CurrentUser) -> DashboardStatsResponse:
+    stats = await get_dashboard_stats(current_user)
+    return DashboardStatsResponse(
+        resumeCount=stats.resume_count,
+        analysisCount=stats.analysis_count,
+    )

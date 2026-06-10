@@ -12,6 +12,7 @@ from app.database.models import (
     AuditLog,
     Resume,
     ResumeSource,
+    User,
 )
 from app.database.models import (
     JsonResume as DbJsonResume,
@@ -83,6 +84,9 @@ async def create_resume(
             status_code=409,
             detail={"message": "A resume with this name already exists"},
         ) from None
+
+    # Atomically increment the user's resume counter
+    await User.find({"_id": user_id}).inc({"resume_count": 1})
 
     return _to_resume_response(resume)
 
@@ -171,6 +175,9 @@ async def delete_resume(
     resume.deleted_at = now
     resume.deleted_by = deleted_by or user_id
     await resume.save()
+
+    # Atomically decrement the user's resume counter
+    await User.find({"_id": user_id}).inc({"resume_count": -1})
 
     # Audit log
     await AuditLog(
