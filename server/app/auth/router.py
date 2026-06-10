@@ -1,9 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from app.auth.schemas import AuthTokenResponse, LoginRequest, RegisterRequest, UserMeResponse
-from app.auth.service import login_user, register_user
+from app.auth.schemas import (
+    AuthTokenResponse,
+    LoginRequest,
+    LogoutResponse,
+    RegisterRequest,
+    UserMeResponse,
+)
+from app.auth.service import login_user, logout_user_session, refresh_user_session, register_user
 from app.common.schemas import ErrorEnvelope
 from app.config import Settings, get_settings
 from app.security.rate_limit import limiter
@@ -149,9 +155,123 @@ async def register(
 @limiter.limit("60/minute")
 async def login(
     request: Request,
+    response: Response,
     payload: LoginRequest,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthTokenResponse:
-    _ = request
-    token = await login_user(payload, settings)
-    return AuthTokenResponse(accessToken=token, tokenType="bearer")
+    access_token, refresh_token = await login_user(payload, settings, request)
+    response.set_cookie(
+        key=settings.auth_refresh_cookie_name,
+        value=refresh_token,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        max_age=settings.auth_refresh_token_ttl_days * 24 * 3600,
+        path="/api/v1/auth",
+    )
+    return AuthTokenResponse(accessToken=access_token, tokenType="bearer")
+
+
+@router.post(
+    "/refresh",
+    summary="Rotate refresh token",
+    description=(
+        "Consumes the current refresh token cookie, rotates it, and returns "
+        "a new access token plus a new refresh cookie."
+    ),
+    response_model=AuthTokenResponse,
+    responses={
+        200: {
+            "description": "Refresh token accepted and rotated.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "accessToken": "signed-token",
+                        "tokenType": "bearer",
+                    }
+                }
+            },
+        },
+        401: {
+            "model": ErrorEnvelope,
+            "description": "Refresh token is missing, invalid, expired, or reused.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 401,
+                        "error": "Unauthorized",
+                        "message": "Invalid refresh token",
+                        "path": "/api/v1/auth/refresh",
+                    }
+                }
+            },
+        },
+        403: {
+            "model": ErrorEnvelope,
+            "description": "The user account is deactivated.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status_code": 403,
+                        "error": "Forbidden",
+                        "message": "Account is deactivated",
+                        "path": "/api/v1/auth/refresh",
+                    }
+                }
+            },
+        },
+    },
+)
+async def refresh(
+    request: Request,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AuthTokenResponse:
+    refresh_token = request.cookies.get(settings.auth_refresh_cookie_name)
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail={"message": "Invalid refresh token"})
+
+    access_token, rotated_refresh_token = await refresh_user_session(
+        refresh_token,
+        settings,
+        request,
+    )
+    response.set_cookie(
+        key=settings.auth_refresh_cookie_name,
+        value=rotated_refresh_token,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        max_age=settings.auth_refresh_token_ttl_days * 24 * 3600,
+        path="/api/v1/auth",
+    )
+    return AuthTokenResponse(accessToken=access_token, tokenType="bearer")
+
+
+@router.post(
+    "/logout",
+    summary="Logout current session",
+    description="Revokes refresh tokens for the current session family and clears auth cookies.",
+    response_model=LogoutResponse,
+    responses={
+        200: {
+            "description": "Session revoked and cookie cleared.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "ok",
+                    }
+                }
+            },
+        }
+    },
+)
+async def logout(
+    request: Request,
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> LogoutResponse:
+    refresh_token = request.cookies.get(settings.auth_refresh_cookie_name)
+    await logout_user_session(refresh_token, request)
+    response.delete_cookie(key=settings.auth_refresh_cookie_name, path="/api/v1/auth")
+    return LogoutResponse(status="ok")

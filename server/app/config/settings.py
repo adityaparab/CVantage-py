@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     admin_password: str | None = None
     auth_access_token_secret: str = "dev-auth-secret-change-me"
     auth_access_token_ttl_seconds: int = Field(default=900, ge=60)
+    auth_jwt_issuer: str = "cvantage-api"
+    auth_jwt_audience: str = "cvantage-clients"
+    auth_refresh_token_ttl_days: int = Field(default=30, ge=1)
+    auth_refresh_cookie_name: str = "cv_refresh_token"
+    auth_cookie_secure: bool = True
     mongodb_uri: str = "mongodb://localhost:27017/cvantage"
     mongodb_db_name: str = "cvantage"
     ready_min_disk_free_mb: int = Field(default=128, ge=1)

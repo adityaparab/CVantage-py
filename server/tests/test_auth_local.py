@@ -12,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 import app.auth.router as auth_router
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import LoginRequest, RegisterRequest
+from app.config import Settings, get_settings
 from app.database.models import UserRole, UserStatus
 from app.main import create_app
 
@@ -29,7 +30,39 @@ class _FakeUser:
 async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
     users: dict[str, _FakeUser] = {}
     password_store: dict[str, str] = {}
-    tokens: dict[str, str] = {}
+    access_tokens: dict[str, str] = {}
+    refresh_active: dict[str, str] = {}
+    refresh_consumed_owner: dict[str, str] = {}
+    revoked_users: set[str] = set()
+
+    token_counter = 0
+
+    def _issue_access(email: str) -> str:
+        nonlocal token_counter
+        token_counter += 1
+        token = f"access-{token_counter}"
+        access_tokens[token] = email
+        return token
+
+    def _issue_refresh(email: str) -> str:
+        nonlocal token_counter
+        token_counter += 1
+        token = f"refresh-{token_counter}"
+        refresh_active[token] = email
+        return token
+
+    def _consume_refresh(token: str) -> str | None:
+        owner = refresh_active.pop(token, None)
+        if owner is not None:
+            refresh_consumed_owner[token] = owner
+        return owner
+
+    def _revoke_user_family(owner: str) -> None:
+        to_revoke = [token for token, email in refresh_active.items() if email == owner]
+        for token in to_revoke:
+            refresh_consumed_owner[token] = owner
+            refresh_active.pop(token, None)
+        revoked_users.add(owner)
 
     async def _register_user(payload: RegisterRequest, _: object) -> _FakeUser:
         email = str(payload.email).lower().strip()
@@ -55,7 +88,7 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
         password_store[email] = payload.password
         return user
 
-    async def _login_user(payload: LoginRequest, _: object) -> str:
+    async def _login_user(payload: LoginRequest, _: object, __: object) -> tuple[str, str]:
         email = str(payload.email).lower().strip()
         user = users.get(email)
         if user is None:
@@ -65,9 +98,32 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
         if user.status == UserStatus.DEACTIVATED or email == "disabled@example.com":
             raise HTTPException(status_code=403, detail={"message": "Account is deactivated"})
 
-        token = f"token-{user.id}"
-        tokens[token] = user.email
-        return token
+        return _issue_access(email), _issue_refresh(email)
+
+    async def _refresh_user_session(
+        refresh_token: str,
+        _: object,
+        __: object,
+    ) -> tuple[str, str]:
+        consumed_owner = refresh_consumed_owner.get(refresh_token)
+        if consumed_owner is not None:
+            _revoke_user_family(consumed_owner)
+            raise HTTPException(status_code=401, detail={"message": "Invalid refresh token"})
+
+        owner = _consume_refresh(refresh_token)
+        if owner is None:
+            raise HTTPException(status_code=401, detail={"message": "Invalid refresh token"})
+        if owner in revoked_users:
+            raise HTTPException(status_code=401, detail={"message": "Invalid refresh token"})
+
+        return _issue_access(owner), _issue_refresh(owner)
+
+    async def _logout_user_session(refresh_token: str | None, _: object) -> None:
+        if not refresh_token:
+            return
+        owner = refresh_active.get(refresh_token) or refresh_consumed_owner.get(refresh_token)
+        if owner is not None:
+            _revoke_user_family(owner)
 
     async def _get_current_user_override(
         authorization: Annotated[str | None, Header()] = None,
@@ -76,7 +132,7 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
             raise HTTPException(status_code=401, detail={"message": "Authentication required"})
 
         token = authorization.split(" ", maxsplit=1)[1]
-        email = tokens.get(token)
+        email = access_tokens.get(token)
         if email is None:
             raise HTTPException(status_code=401, detail={"message": "Authentication required"})
 
@@ -87,9 +143,15 @@ async def auth_client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncCli
 
     monkeypatch.setattr(auth_router, "register_user", _register_user)
     monkeypatch.setattr(auth_router, "login_user", _login_user)
+    monkeypatch.setattr(auth_router, "refresh_user_session", _refresh_user_session)
+    monkeypatch.setattr(auth_router, "logout_user_session", _logout_user_session)
 
     app = create_app()
     app.dependency_overrides[get_current_user] = _get_current_user_override
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        environment="test",
+        auth_cookie_secure=False,
+    )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
@@ -213,3 +275,116 @@ async def test_deactivated_account_blocked(auth_client: AsyncClient) -> None:
 
     assert response.status_code == 403
     assert response.json()["message"] == "Account is deactivated"
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_refresh_rotates_and_old_token_reuse_returns_401(auth_client: AsyncClient) -> None:
+    login_response = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "candidate@example.com", "password": "StrongPass#2026"},
+    )
+    if login_response.status_code == 401:
+        await auth_client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "candidate@example.com",
+                "fullName": "Jane Candidate",
+                "password": "StrongPass#2026",
+            },
+        )
+        login_response = await auth_client.post(
+            "/api/v1/auth/login",
+            json={"email": "candidate@example.com", "password": "StrongPass#2026"},
+        )
+
+    old_refresh = login_response.cookies.get("cv_refresh_token")
+    assert old_refresh is not None
+
+    rotated = await auth_client.post("/api/v1/auth/refresh")
+    assert rotated.status_code == 200
+
+    replay = await auth_client.post(
+        "/api/v1/auth/refresh",
+        cookies={"cv_refresh_token": old_refresh},
+    )
+    assert replay.status_code == 401
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_refresh_reuse_detection_revokes_session_family(auth_client: AsyncClient) -> None:
+    await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "reuse@example.com",
+            "fullName": "Reuse Candidate",
+            "password": "StrongPass#2026",
+        },
+    )
+
+    login_a = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "reuse@example.com", "password": "StrongPass#2026"},
+    )
+    login_b = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "reuse@example.com", "password": "StrongPass#2026"},
+    )
+
+    refresh_a = login_a.cookies.get("cv_refresh_token")
+    refresh_b = login_b.cookies.get("cv_refresh_token")
+    assert refresh_a is not None
+    assert refresh_b is not None
+
+    rotate_a = await auth_client.post(
+        "/api/v1/auth/refresh",
+        cookies={"cv_refresh_token": refresh_a},
+    )
+    assert rotate_a.status_code == 200
+
+    reuse_attempt = await auth_client.post(
+        "/api/v1/auth/refresh",
+        cookies={"cv_refresh_token": refresh_a},
+    )
+    assert reuse_attempt.status_code == 401
+
+    family_revoked = await auth_client.post(
+        "/api/v1/auth/refresh",
+        cookies={"cv_refresh_token": refresh_b},
+    )
+    assert family_revoked.status_code == 401
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_expired_access_with_valid_refresh_recovers(auth_client: AsyncClient) -> None:
+    await auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "recover@example.com",
+            "fullName": "Recover Candidate",
+            "password": "StrongPass#2026",
+        },
+    )
+    login_response = await auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "recover@example.com", "password": "StrongPass#2026"},
+    )
+    assert login_response.status_code == 200
+
+    expired_access = await auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": "Bearer expired-token"},
+    )
+    assert expired_access.status_code == 401
+
+    refreshed = await auth_client.post("/api/v1/auth/refresh")
+    assert refreshed.status_code == 200
+
+    new_access = refreshed.json()["accessToken"]
+    recovered_me = await auth_client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {new_access}"},
+    )
+    assert recovered_me.status_code == 200

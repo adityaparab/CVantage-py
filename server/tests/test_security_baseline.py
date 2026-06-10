@@ -36,8 +36,8 @@ async def test_cors_disallowed_origin_is_blocked() -> None:
 async def test_auth_route_rate_limit_hits_429_on_61st_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _fake_login_user(_: object, __: object) -> str:
-        return "token"
+    async def _fake_login_user(_: object, __: object, ___: object) -> tuple[str, str]:
+        return "access", "refresh"
 
     monkeypatch.setattr(auth_router, "login_user", _fake_login_user)
 
