@@ -581,6 +581,14 @@ class AnalysisResult(BaseModel):
     interview_questions: list[InterviewQuestion] = Field(default_factory=list)
 
 
+class TokenUsage(BaseModel):
+    """Aggregate LLM token usage across an analysis's steps (issue #54)."""
+
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+
+
 class Analysis(TimestampedDocument):
     user_id: PydanticObjectId
     resume_id: PydanticObjectId
@@ -597,6 +605,7 @@ class Analysis(TimestampedDocument):
     result: Optional[AnalysisResult] = None
 
     model_used: Optional[str] = None
+    token_usage: Optional[TokenUsage] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     duration_ms: Optional[int] = Field(None, ge=0)

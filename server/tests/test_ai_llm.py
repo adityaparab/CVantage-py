@@ -140,25 +140,40 @@ def test_retry_decorator_builds() -> None:
     assert callable(decorator)
 
 
-class _FakeStructured:
-    def __init__(self, outcome: Any) -> None:
-        self._outcome = outcome
+class _RawMessage:
+    def __init__(self, usage_metadata: dict[str, int] | None) -> None:
+        self.usage_metadata = usage_metadata
 
-    async def ainvoke(self, _messages: Any) -> Any:
+
+class _FakeStructured:
+    def __init__(self, outcome: Any, usage: dict[str, int] | None, parsing_error: Any) -> None:
+        self._outcome = outcome
+        self._usage = usage
+        self._parsing_error = parsing_error
+
+    async def ainvoke(self, _messages: Any, config: Any = None) -> Any:
         if isinstance(self._outcome, Exception):
             raise self._outcome
-        return self._outcome
+        return {
+            "raw": _RawMessage(self._usage),
+            "parsed": self._outcome,
+            "parsing_error": self._parsing_error,
+        }
 
 
 class _FakeChatOpenAI:
     outcome: Any = None
+    usage: dict[str, int] | None = None
+    parsing_error: Any = None
     captured: dict[str, Any] = {}
 
     def __init__(self, **kwargs: Any) -> None:
         type(self).captured = kwargs
 
-    def with_structured_output(self, schema: type[BaseModel], method: str = "json_mode") -> Any:
-        return _FakeStructured(type(self).outcome)
+    def with_structured_output(
+        self, schema: type[BaseModel], method: str = "json_mode", include_raw: bool = False
+    ) -> Any:
+        return _FakeStructured(type(self).outcome, type(self).usage, type(self).parsing_error)
 
 
 def _model_service(*, openai_api_key: str | None = "env-key") -> AiModelService:
@@ -172,6 +187,12 @@ def _model_service(*, openai_api_key: str | None = "env-key") -> AiModelService:
 
 @pytest.mark.usefixtures("beanie_db")
 class TestOpenAiLlmProvider:
+    def setup_method(self) -> None:
+        _FakeChatOpenAI.outcome = None
+        _FakeChatOpenAI.usage = None
+        _FakeChatOpenAI.parsing_error = None
+        _FakeChatOpenAI.captured = {}
+
     @pytest.mark.asyncio
     async def test_no_key_raises_quota(self) -> None:
         provider = OpenAiLlmProvider(_model_service(openai_api_key=None), AiModelUsage.ANALYSIS)
@@ -179,13 +200,30 @@ class TestOpenAiLlmProvider:
             await provider.structured_call("sys", "user", _TestSchema)
 
     @pytest.mark.asyncio
-    async def test_success_with_model_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_success_captures_usage_and_bounds_tokens(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         _FakeChatOpenAI.outcome = _TestSchema(name="Real", score=88)
+        _FakeChatOpenAI.usage = {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150}
         monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
         provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
         response = await provider.structured_call("sys", "user", _TestSchema)
         assert response.parsed.name == "Real"
         assert response.usage.model == "gpt-4o"
+        assert response.usage.prompt_tokens == 120
+        assert response.usage.completion_tokens == 30
+        assert response.usage.total_tokens == 150
+        # Output is bounded by the configured max_tokens.
+        assert _FakeChatOpenAI.captured["max_tokens"] == 2048
+
+    @pytest.mark.asyncio
+    async def test_parsing_error_is_invalid_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeChatOpenAI.outcome = None
+        _FakeChatOpenAI.parsing_error = ValueError("could not parse")
+        monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+        provider = OpenAiLlmProvider(_model_service(), AiModelUsage.ANALYSIS)
+        with pytest.raises(LlmInvalidOutputError):
+            await provider.structured_call("sys", "user", _TestSchema)
 
     @pytest.mark.asyncio
     async def test_success_with_dict_result(self, monkeypatch: pytest.MonkeyPatch) -> None:

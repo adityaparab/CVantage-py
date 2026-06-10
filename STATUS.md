@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 Branch: main
 
 ## Recently Completed (Phase 3–6)
@@ -25,13 +25,15 @@ Branch: main
 | 51 | Resume parsing pipeline (LLM → json-resume) | #140 | ✅ |
 | 52 | 3-step analysis pipeline (compare/suggest/interview) | #141 | ✅ |
 | 53 | Analysis CRUD, retry, cancel, suggestion apply/dismiss | #142 | ✅ |
+| 54 | LLM observability (LangSmith/Langfuse) & cost guards | #148 | ✅ |
+| 55 | AI platform test suite (real Beanie via mongomock) | #147 | ✅ |
 
-### Phase 5 — Notifications & Realtime
+### Phase 5 — Notifications & Realtime ✅
 | # | Task | PR | Status |
 |---|------|----|--------|
 | 56 | Notifications module (bell, lifecycle, auto-clear) | #143 | ✅ |
 | 57 | SSE event streams for analysis progress | #144 | ✅ |
-| 58 | Realtime test suite | — | ⏳ |
+| 58 | Realtime test suite (notifications + SSE) | #147 | ✅ |
 
 ### Phase 6 — Admin Domain
 | # | Task | PR | Status |
@@ -42,16 +44,25 @@ Branch: main
 | 62 | AI model settings endpoints | — | ⏳ |
 | 63 | Admin test suite + RBAC matrix | — | ⏳ |
 
+## Bug fixes landed (found via the phase 4-5 test suites, PR #147)
+
+- **Secret-field persistence:** `password_hash`/`api_key_encrypted`/`token_hash`
+  used `Field(exclude=True)`, which also dropped them from Beanie's stored doc —
+  hashes were never written to Mongo. Removed `exclude=True`; secrets stay out of
+  API responses via the DTO layer.
+- **Analysis step state:** steps held a stale reference across `analysis.save()`
+  (Beanie `merge_models` replaces the list), so completion never persisted —
+  analyses finished with steps stuck `in_progress`. Step is now re-acquired.
+- **Missing deps:** pinned `python-docx`/`pypdf` (text extraction) in #146.
+
 ## Current State
 
-**Tests:** 173 passed, 2 skipped (0 failures)
+**Tests:** 242 passed, 2 skipped (0 failures)
 **Lint/Format:** ruff clean, mypy strict clean
-**Coverage:** ≥80% module-wide on server
+**Coverage:** 81% module-wide on server (gate ≥80%)
 
-**Last 10 merged PRs:** #131–#145 covering phases 3–6 backend work:
-json-resume schemas · CRUD · storage abstraction · file upload · text extraction ·
-key encryption · LLM service · job runner · resume parsing · analysis pipeline ·
-SSE streams · notifications · admin stats
+**Phases 0–5 complete.** Backend foundation, auth, resume domain, AI platform &
+analysis pipeline, and notifications/realtime are all implemented and tested.
 
 ## Next Priority
 

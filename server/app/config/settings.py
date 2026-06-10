@@ -66,6 +66,22 @@ class Settings(BaseSettings):
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
 
+    # LLM tuning + cost guards (issue #54)
+    llm_timeout_seconds: int = Field(default=60, ge=1, le=600)
+    llm_max_output_tokens: int = Field(default=2048, ge=64, le=32_000)
+    analysis_max_jd_chars: int = Field(default=50_000, ge=100)
+    analysis_max_resume_chars: int = Field(default=200_000, ge=100)
+    max_concurrent_analyses_per_user: int = Field(default=3, ge=1, le=50)
+
+    # LLM observability (all optional / env-gated — zero overhead when unset)
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+    langsmith_project: str | None = None
+    langsmith_endpoint: str | None = None
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_host: str | None = None
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, value: object) -> object:

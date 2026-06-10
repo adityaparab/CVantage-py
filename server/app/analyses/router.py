@@ -46,6 +46,7 @@ def _analysis_to_response(a: Analysis) -> AnalysisResponse:
         ],
         result=a.result.model_dump(by_alias=True) if a.result else None,
         model_used=a.model_used,
+        token_usage=a.token_usage.model_dump() if a.token_usage else None,
         started_at=a.started_at,
         completed_at=a.completed_at,
         error=a.error,
@@ -79,6 +80,10 @@ def _to_list_item(a: Analysis) -> AnalysisListItem:
         401: {"model": ErrorEnvelope, "description": "Authentication required."},
         404: {"model": ErrorEnvelope, "description": "Resume not found."},
         422: {"model": ErrorEnvelope, "description": "Validation error."},
+        429: {
+            "model": ErrorEnvelope,
+            "description": "Too many concurrent analyses for this user.",
+        },
     },
 )
 async def post_analysis(

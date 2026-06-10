@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from starlette.responses import Response
 
+from app.ai.observability import configure_langsmith
 from app.api import api_router
 from app.common import register_error_handlers
 from app.config import get_settings
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.job_runner_drain_hook = noop_job_drain
 
     configure_logging(settings.log_level, settings.environment)
+    configure_langsmith(settings)
     await init_database(settings)
     try:
         yield

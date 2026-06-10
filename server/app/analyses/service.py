@@ -16,7 +16,8 @@ from beanie import PydanticObjectId
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from app.ai.llm import LlmProvider
+from app.ai.llm import LlmProvider, LlmUsage
+from app.config import get_settings
 from app.database.models import (
     Analysis,
     AnalysisResult,
@@ -26,12 +27,27 @@ from app.database.models import (
     ResumeAnalysisStatus,
     StepStatus,
     Suggestion,
+    TokenUsage,
 )
 from app.database.models import (
     JsonResume as DbJsonResume,
 )
 
 logger = structlog.get_logger("app.analyses")
+
+# Statuses that count toward a user's concurrent-analysis budget (issue #54).
+_ACTIVE_ANALYSIS_STATUSES = [AnalysisStatus.PENDING.value, AnalysisStatus.IN_PROGRESS.value]
+
+
+def _add_usage(analysis: Analysis, usage: LlmUsage) -> None:
+    """Accumulate a step's token usage onto the analysis (issue #54)."""
+    current = analysis.token_usage or TokenUsage()
+    analysis.token_usage = TokenUsage(
+        prompt_tokens=current.prompt_tokens + usage.prompt_tokens,
+        completion_tokens=current.completion_tokens + usage.completion_tokens,
+        total_tokens=current.total_tokens + usage.total_tokens,
+    )
+
 
 # ============================================================================
 # Pydantic schemas for the LLM structured output
@@ -107,6 +123,23 @@ async def create_analysis(
     if resume is None:
         raise HTTPException(status_code=404, detail={"message": "Resume not found"})
 
+    # Cost guard: cap the number of analyses a user can have running at once.
+    settings = get_settings()
+    active_count = await Analysis.find(
+        {"user_id": user_id, "status": {"$in": _ACTIVE_ANALYSIS_STATUSES}}
+    ).count()
+    if active_count >= settings.max_concurrent_analyses_per_user:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": (
+                    f"You already have {active_count} analyses in progress "
+                    f"(limit {settings.max_concurrent_analyses_per_user}). "
+                    "Please wait for one to finish."
+                )
+            },
+        )
+
     analysis = Analysis(
         user_id=user_id,
         resume_id=resume_id,
@@ -147,6 +180,7 @@ async def run_step_compare(
             matching_skills=response.parsed.matching_skills,
             skill_gaps=response.parsed.skill_gaps,
         )
+        _add_usage(analysis, response.usage)
         # Re-acquire: the save() above replaced analysis.steps via merge_models,
         # so the earlier `step` reference is now detached and won't persist.
         step = analysis.steps[step_index]
@@ -188,6 +222,7 @@ async def run_step_suggestions(
             )
             for s in response.parsed.suggestions
         ]
+        _add_usage(analysis, response.usage)
         # Re-acquire after save() (merge_models replaced the steps list).
         step = analysis.steps[step_index]
         step.status = StepStatus.COMPLETED
@@ -222,6 +257,7 @@ async def run_step_interview(
             InterviewQuestion(question=q.question, suggested_answer=q.suggested_answer)
             for q in response.parsed.questions
         ]
+        _add_usage(analysis, response.usage)
         # Re-acquire after save() (merge_models replaced the steps list).
         step = analysis.steps[step_index]
         step.status = StepStatus.COMPLETED
@@ -515,4 +551,9 @@ def _resume_to_text(resume: DbJsonResume) -> str:
             if isinstance(s, dict):
                 parts.append(f"{s.get('name', '')} ({s.get('level', '')})")
 
-    return "\n".join(parts)
+    text = "\n".join(parts)
+    # Cost guard: bound the resume text fed to the LLM (issue #54).
+    max_chars = get_settings().analysis_max_resume_chars
+    if len(text) > max_chars:
+        text = text[:max_chars]
+    return text
