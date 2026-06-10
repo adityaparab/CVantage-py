@@ -45,6 +45,10 @@ OPENAPI_TAGS = [
         "name": "notifications",
         "description": "In-app bell notifications for analysis lifecycle events.",
     },
+    {
+        "name": "admin",
+        "description": "Admin-only platform management endpoints.",
+    },
 ]
 
 
