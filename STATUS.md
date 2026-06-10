@@ -35,14 +35,14 @@ Branch: main
 | 57 | SSE event streams for analysis progress | #144 | ✅ |
 | 58 | Realtime test suite (notifications + SSE) | #147 | ✅ |
 
-### Phase 6 — Admin Domain
+### Phase 6 — Admin Domain ✅
 | # | Task | PR | Status |
 |---|------|----|--------|
 | 59 | Admin stats endpoint (RBAC-guarded) | #145 | ✅ |
 | 60 | Admin user management (search/update/reset/deactivate) | #149 | ✅ |
 | 61 | Privacy-bounded resume administration (cascade delete) | #150 | ✅ |
 | 62 | AI model settings endpoints (validate/rotate/guard) | #151 | ✅ |
-| 63 | Admin test suite + RBAC matrix | — | ⏳ |
+| 63 | Admin test suite + RBAC matrix + security review | #152 | ✅ |
 
 ## Bug fixes landed (found via the phase 4-5 test suites, PR #147)
 
@@ -54,21 +54,25 @@ Branch: main
   (Beanie `merge_models` replaces the list), so completion never persisted —
   analyses finished with steps stuck `in_progress`. Step is now re-acquired.
 - **Missing deps:** pinned `python-docx`/`pypdf` (text extraction) in #146.
+- **last_active_at tz bug (#152):** `_touch_last_active` subtracted a tz-aware
+  `now` from the tz-naive value Mongo returns, raising `TypeError` on a user's
+  second request within 5 min. Now normalizes to UTC. Found by the admin RBAC
+  matrix (real JWTs, no dependency override).
 
 ## Current State
 
-**Tests:** 242 passed, 2 skipped (0 failures)
+**Tests:** 325 passed, 2 skipped (0 failures)
 **Lint/Format:** ruff clean, mypy strict clean
-**Coverage:** 81% module-wide on server (gate ≥80%)
+**Coverage:** 84% module-wide on server (gate ≥80%); admin module 98%
 
-**Phases 0–5 complete.** Backend foundation, auth, resume domain, AI platform &
-analysis pipeline, and notifications/realtime are all implemented and tested.
+**Phases 0–6 complete (backend).** Backend foundation, auth, resume domain, AI
+platform & analysis pipeline, notifications/realtime, and the full admin domain
+(stats, user mgmt, privacy-bounded resume admin, AI model settings, RBAC matrix)
+are implemented and tested. **Next: Phase 7 — Frontend Foundation.**
 
 ## Next Priority
 
-- #60 Admin user management (area:server, P0):
-  - GET /admin/users (search, paginate, sort)
-  - PATCH /admin/users/{id}, deactivate/reactivate
-  - POST /admin/users/{id}/reset-password
-  - Admin cannot deactivate themselves
-  - RBAC: candidate → 403 on all admin routes
+- #64 Vite + React + TS scaffold (area:client, P0) — kicks off Phase 7
+  (Frontend Foundation): scaffold, design system, routing, API client, forms,
+  test harness. The entire frontend (Phases 7–9) is still to build.
+- Phase 11 (Railway deploy, #103/#104) needs the user's Railway account/keys.

@@ -19,10 +19,12 @@ def _utcnow() -> datetime:
 
 async def _touch_last_active(user: User) -> None:
     now = _utcnow()
-    if (
-        user.last_active_at is not None
-        and (now - user.last_active_at) < _LAST_ACTIVE_UPDATE_INTERVAL
-    ):
+    last_active = user.last_active_at
+    # Datetimes read back from Mongo are tz-naive (PyMongo default); treat them
+    # as UTC so the comparison never mixes naive and aware datetimes.
+    if last_active is not None and last_active.tzinfo is None:
+        last_active = last_active.replace(tzinfo=UTC)
+    if last_active is not None and (now - last_active) < _LAST_ACTIVE_UPDATE_INTERVAL:
         return
 
     user.last_active_at = now
