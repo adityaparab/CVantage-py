@@ -50,6 +50,15 @@ describe("UploadPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/PDF, DOC, and DOCX/);
   });
 
+  it("highlights the dropzone while dragging over it", () => {
+    renderUpload();
+    const dropzone = screen.getByText(/Drag & drop a file/).closest("button")!;
+    fireEvent.dragOver(dropzone);
+    expect(dropzone.className).toMatch(/border-accent\b/);
+    fireEvent.dragLeave(dropzone);
+    expect(dropzone.className).toMatch(/border-border\b/);
+  });
+
   it("uploads a valid file and navigates to the review screen", async () => {
     server.use(
       http.post("*/api/v1/resumes/upload", () =>
