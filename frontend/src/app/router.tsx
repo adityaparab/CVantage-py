@@ -16,6 +16,14 @@ function lazyNamed<T extends Record<string, ComponentType<unknown>>>(
 const LandingPage = lazyNamed(() => import("@/features/landing/LandingPage"), "LandingPage");
 const LoginPage = lazyNamed(() => import("@/features/auth/LoginPage"), "LoginPage");
 const RegisterPage = lazyNamed(() => import("@/features/auth/RegisterPage"), "RegisterPage");
+const ForgotPasswordPage = lazyNamed(
+  () => import("@/features/auth/ForgotPasswordPage"),
+  "ForgotPasswordPage",
+);
+const ResetPasswordPage = lazyNamed(
+  () => import("@/features/auth/ResetPasswordPage"),
+  "ResetPasswordPage",
+);
 const DashboardPage = lazyNamed(
   () => import("@/features/dashboard/DashboardPage"),
   "DashboardPage",
@@ -75,6 +83,22 @@ const router = createBrowserRouter([
               <RegisterPage />
             </Lazy>
           </RedirectIfAuthed>
+        ),
+      },
+      {
+        path: "forgot-password",
+        element: (
+          <Lazy>
+            <ForgotPasswordPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: "reset-password",
+        element: (
+          <Lazy>
+            <ResetPasswordPage />
+          </Lazy>
         ),
       },
     ],

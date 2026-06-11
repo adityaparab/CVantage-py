@@ -70,3 +70,21 @@ export async function logout(): Promise<void> {
     setAccessToken(null);
   }
 }
+
+export async function forgotPassword(email: string): Promise<void> {
+  await apiClient.post("/auth/forgot-password", { email });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  await apiClient.post("/auth/reset-password", { token, newPassword });
+}
+
+export interface AuthProviders {
+  google: boolean;
+  linkedin: boolean;
+}
+
+export async function fetchProviders(): Promise<AuthProviders> {
+  const res = await apiClient.get<AuthProviders>("/auth/providers");
+  return res.data;
+}
