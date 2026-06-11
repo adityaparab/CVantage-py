@@ -81,18 +81,24 @@ Branch: main
 
 ## Current State
 
-**Tests:** 325 passed, 2 skipped (0 failures)
-**Lint/Format:** ruff clean, mypy strict clean
-**Coverage:** 84% module-wide on server (gate ≥80%); admin module 98%
+**Server:** 325 passed, 2 skipped · ruff/mypy strict clean · 84% coverage (admin 98%)
+**Frontend:** 51 passed · typecheck/lint/format clean · build emits per-route chunks
 
-**Phases 0–6 complete (backend).** Backend foundation, auth, resume domain, AI
-platform & analysis pipeline, notifications/realtime, and the full admin domain
-(stats, user mgmt, privacy-bounded resume admin, AI model settings, RBAC matrix)
-are implemented and tested. **Next: Phase 7 — Frontend Foundation.**
+**Phases 0–7 complete + Phase 8 in progress.** Backend (0–6) and the frontend
+foundation (7) are done. The candidate app is demoable end-to-end:
+landing → register/login → dashboard (stats, resume table, optimistic delete) →
+upload (validated dropzone + progress). Phase 8 done so far: #71, #72, #73, #74.
 
-## Next Priority
+## Next Priority — resume at #77
 
-- #64 Vite + React + TS scaffold (area:client, P0) — kicks off Phase 7
-  (Frontend Foundation): scaffold, design system, routing, API client, forms,
-  test harness. The entire frontend (Phases 7–9) is still to build.
-- Phase 11 (Railway deploy, #103/#104) needs the user's Railway account/keys.
+- **#77 Resume editor (create flow)** — the largest single issue: a full
+  json-resume form across all 12 sections + meta, partial-date fields, array
+  add/remove/reorder, `pruneEmpty` before submit, section nav, per-field zod
+  validation. The forms infra (#68: `TextField`/`ArrayField`/`DateField`) and a
+  starter zod schema pattern are already in place to build on.
+- Then #78 (in-place view/edit), #79 (upload review — also needs the server to
+  expose `upload_parse` status on the resume response), #80–83 (analysis
+  start/progress-SSE/results/apply), #86 (candidate test suite).
+- Phase 9 (admin UI #87–89 + server export #90), Phase 10 (SPA serve, a11y/perf,
+  Sentry, OTel, Playwright, hardening, docs), Phase 11 (Docker/CI/`railway.json`
+  + runbook — prep only; **Railway deploy #103/#104 needs your account**).
