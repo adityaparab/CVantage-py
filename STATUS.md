@@ -45,7 +45,8 @@ Branch: main
 | 77 | Resume editor (all 12 sections, prune, section nav) | #164 | ✅ |
 | 78 | Resume view & in-place editing (PATCH, 409 reload) | #165 | ✅ |
 | 80 | Analysis start screen (JD input, validation, create) | #166 | ✅ |
-| 79, 81–83 | Upload review, analysis progress/results, apply | — | ⏳ |
+| 81 | Analysis progress + bell notification (poll, retry) | #167 | ✅ |
+| 79, 82, 83 | Upload review, analysis results, apply-suggestions | — | ⏳ |
 | 86 | Candidate experience test suite | — | ⏳ |
 
 ### Phase 7 — Frontend Foundation ✅
