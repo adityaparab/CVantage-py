@@ -48,7 +48,8 @@ Branch: main
 | 81 | Analysis progress + bell notification (poll, retry) | #167 | ✅ |
 | 82 | Analysis results (scores, suggestions, interview QA) | #168 | ✅ |
 | 83 | Apply-suggestions (apply/dismiss, resume preview) | #169 | ✅ |
-| 79, 86 | Upload review (needs server parse-status), test suite | — | ⏳ |
+| 86 | Candidate experience test suite (feature folders ≥80%) | #170 | ✅ |
+| 79 | Upload review split-view (needs server parse-status) | — | ⏳ |
 | 86 | Candidate experience test suite | — | ⏳ |
 
 ### Phase 7 — Frontend Foundation ✅
