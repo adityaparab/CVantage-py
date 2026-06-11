@@ -47,7 +47,8 @@ Branch: main
 | 80 | Analysis start screen (JD input, validation, create) | #166 | ✅ |
 | 81 | Analysis progress + bell notification (poll, retry) | #167 | ✅ |
 | 82 | Analysis results (scores, suggestions, interview QA) | #168 | ✅ |
-| 79, 83 | Upload review, apply-suggestions | — | ⏳ |
+| 83 | Apply-suggestions (apply/dismiss, resume preview) | #169 | ✅ |
+| 79, 86 | Upload review (needs server parse-status), test suite | — | ⏳ |
 | 86 | Candidate experience test suite | — | ⏳ |
 
 ### Phase 7 — Frontend Foundation ✅
