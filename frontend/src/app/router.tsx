@@ -28,6 +28,7 @@ const DashboardPage = lazyNamed(
   () => import("@/features/dashboard/DashboardPage"),
   "DashboardPage",
 );
+const UploadPage = lazyNamed(() => import("@/features/upload/UploadPage"), "UploadPage");
 const AdminDashboardPage = lazyNamed(
   () => import("@/features/admin/AdminDashboardPage"),
   "AdminDashboardPage",
@@ -115,6 +116,14 @@ const router = createBrowserRouter([
         element: (
           <Lazy>
             <DashboardPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: "upload",
+        element: (
+          <Lazy>
+            <UploadPage />
           </Lazy>
         ),
       },
