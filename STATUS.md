@@ -45,7 +45,7 @@ Branch: main
 | 96 | OpenTelemetry tracing (env-gated, OTLP) | #181 | ✅ |
 | 97 | Playwright E2E (smoke + mocked candidate journey) | #182 | ✅ |
 | 98 | Security hardening (CSP+HSTS, audits clean) | #183 | ✅ |
-| 99 | Documentation & runbook | — | ⏳ |
+| 99 | Documentation & runbook (README, architecture, ops) | #184 | ✅ |
 
 ### Phase 9 — Frontend Admin + Export
 | # | Task | PR | Status |
