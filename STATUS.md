@@ -44,7 +44,8 @@ Branch: main
 | 95 | Sentry error tracking (env-gated, PII-scrubbed) | #180 | ✅ |
 | 96 | OpenTelemetry tracing (env-gated, OTLP) | #181 | ✅ |
 | 97 | Playwright E2E (smoke + mocked candidate journey) | #182 | ✅ |
-| 98–99 | security hardening, docs | — | ⏳ |
+| 98 | Security hardening (CSP+HSTS, audits clean) | #183 | ✅ |
+| 99 | Documentation & runbook | — | ⏳ |
 
 ### Phase 9 — Frontend Admin + Export
 | # | Task | PR | Status |
