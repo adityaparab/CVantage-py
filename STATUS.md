@@ -39,7 +39,7 @@ Branch: main
 | # | Task | PR | Status |
 |---|------|----|--------|
 | 71 | Landing page (hero, features, how-it-works) | #159 | ✅ |
-| 72 | Auth screens (login/register/forgot/reset) | — | ⏳ |
+| 72 | Auth screens (login/register/forgot/reset, OAuth) | #160 | ✅ |
 | 73 | Candidate dashboard | — | ⏳ |
 | 74 | Upload flow | — | ⏳ |
 | 77–83 | Resume editor/view, analysis start/progress/results, apply | — | ⏳ |
