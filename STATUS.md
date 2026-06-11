@@ -42,7 +42,7 @@ Branch: main
 | 101 | docker-compose full stack (app + mongo) | #186 | ✅ |
 | 102 | CI/CD pipeline (GitHub Actions) | #187 | ✅ |
 | 103 | Railway deploy — config + runbook prepped | #188 | prepped (deploy needs account) |
-| 104 | Launch checklist | — | ⏳ |
+| 104 | Launch checklist (authored in runbook) | #189 | prepped (run at go-live) |
 
 ### Phase 10 — Integration, Quality & Hardening
 | # | Task | PR | Status |
