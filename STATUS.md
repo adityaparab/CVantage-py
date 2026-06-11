@@ -35,7 +35,7 @@ Branch: main
 | 57 | SSE event streams for analysis progress | #144 | ✅ |
 | 58 | Realtime test suite (notifications + SSE) | #147 | ✅ |
 
-### Phase 7 — Frontend Foundation
+### Phase 7 — Frontend Foundation ✅
 | # | Task | PR | Status |
 |---|------|----|--------|
 | 64 | Vite + React + TS scaffold (proxy, aliases, build) | #153 | ✅ |
@@ -43,7 +43,7 @@ Branch: main
 | 66 | Routing & layouts (guards, shells, lazy chunks, 404/403) | #155 | ✅ |
 | 67 | API client & query layer (refresh queue, auth ctx, MSW) | #156 | ✅ |
 | 68 | Forms infrastructure (RHF+zod fields, array, dirty guard) | #157 | ✅ |
-| 69 | Frontend test harness (Vitest+RTL+MSW stood up in #67) | — | ⏳ |
+| 69 | Frontend test harness (Vitest+RTL+MSW, coverage gates) | #158 | ✅ |
 
 ### Phase 6 — Admin Domain ✅
 | # | Task | PR | Status |
