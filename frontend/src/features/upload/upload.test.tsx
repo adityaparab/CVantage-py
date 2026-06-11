@@ -33,7 +33,7 @@ function renderUpload() {
   const router = createMemoryRouter(
     [
       { path: "/upload", element: <UploadPage /> },
-      { path: "/resumes/:id/review", element: <p>Review screen</p> },
+      { path: "/resumes/:id", element: <p>Review screen</p> },
     ],
     { initialEntries: ["/upload"] },
   );
