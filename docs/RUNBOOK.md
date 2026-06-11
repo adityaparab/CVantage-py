@@ -114,3 +114,34 @@ Store archives off-host (object storage) with retention. Test a restore periodic
   confirm it is scheduled in production.
 - **Key rotation:** rotate `AUTH_ACCESS_TOKEN_SECRET` (invalidates sessions) and provider
   API keys (admin UI → AI models → rotate) on a schedule or after suspected exposure.
+
+## Launch checklist
+
+Run through this once before announcing the deployment.
+
+**Pre-deploy**
+
+- [ ] CI is green on the deploy commit (lint, types, tests, build, audits, image build, e2e).
+- [ ] All required production env vars set (see *Configuration*); secrets are strong and
+      not the `.env.example`/compose dev defaults.
+- [ ] `MASTER_ENCRYPTION_KEY` and `AUTH_ACCESS_TOKEN_SECRET` are fresh, unique secrets.
+- [ ] MongoDB provisioned; `MONGODB_URI` reachable from the app; a backup schedule exists.
+- [ ] `CORS_ORIGINS` is the real web origin; `AUTH_COOKIE_SECURE=true`; serving over HTTPS.
+
+**Smoke (against the live URL)**
+
+- [ ] `GET /api/v1/health/ready` → 200; the SPA loads and deep links resolve.
+- [ ] Register → verify → log in → refresh-token rotation works (cookie set, `Secure`).
+- [ ] Create and upload a resume; run an analysis end-to-end; apply a suggestion; export
+      PDF and DOCX.
+- [ ] Admin can sign in and manage users/models; **a candidate cannot reach `/admin`**.
+- [ ] **Privacy:** confirm admin views expose resume **metadata only** — never content.
+- [ ] Security headers present (CSP, HSTS, `nosniff`); Swagger is **disabled** in prod;
+      rate limiting returns 429 under burst.
+
+**Post-launch**
+
+- [ ] Error tracking receiving events if `SENTRY_DSN` set; tracing if `OTEL_*` set.
+- [ ] Logs are structured and queryable by `request_id`; no secrets in logs.
+- [ ] Rollback path validated (previous image tag redeploys cleanly).
+- [ ] First backup taken and a test restore verified.
