@@ -79,7 +79,7 @@ Branch: main
 | 82 | Analysis results (scores, suggestions, interview QA) | #168 | ✅ |
 | 83 | Apply-suggestions (apply/dismiss, resume preview) | #169 | ✅ |
 | 86 | Candidate experience test suite (feature folders ≥80%) | #170 | ✅ |
-| 79 | Upload review split-view (needs server parse-status) | — | ⏳ |
+| 79 | Upload review split-view (parse-on-upload + parsed/original review) | #190 | ✅ |
 | 86 | Candidate experience test suite | — | ⏳ |
 
 ### Phase 7 — Frontend Foundation ✅

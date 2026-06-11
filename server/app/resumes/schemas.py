@@ -327,6 +327,16 @@ class UpdateResumeRequest(BaseModel):
     )
 
 
+class UploadParseInfo(BaseModel):
+    """AI-parse status for an uploaded resume (issue #79)."""
+
+    status: str = Field(examples=["completed"], description="pending|processing|completed|failed")
+    error: str | None = Field(default=None, description="Failure reason when status is failed")
+    model_used: str | None = Field(default=None)
+    started_at: datetime | None = Field(default=None)
+    completed_at: datetime | None = Field(default=None)
+
+
 class ResumeResponse(BaseModel):
     """Full resume response returned by get/create/update endpoints."""
 
@@ -337,6 +347,9 @@ class ResumeResponse(BaseModel):
     analysis_status: str = Field(examples=["unanalyzed"])
     original_text: str | None = Field(
         default=None, description="Raw extracted text (uploaded resumes only)"
+    )
+    upload_parse: UploadParseInfo | None = Field(
+        default=None, description="AI parse status (uploaded resumes only)"
     )
     last_analyzed_at: datetime | None = Field(default=None, examples=["2026-06-10T12:00:00Z"])
     analysis_count: int = Field(ge=0, examples=[0])
