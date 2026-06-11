@@ -95,10 +95,11 @@ async def post_analysis(
 
     analysis = await create_analysis(user_id, payload.name, payload.job_description, resume_id)
 
-    # Run pipeline with fake provider (real OpenAI integration comes later)
-    from app.ai.llm import FakeLlmProvider
+    # Resolve the configured LLM provider (real OpenAI when set, else fake).
+    from app.ai.provider import get_llm_provider
+    from app.database.models import AiModelUsage
 
-    provider = FakeLlmProvider()
+    provider = await get_llm_provider(AiModelUsage.ANALYSIS)
     await run_full_pipeline(analysis, provider)
 
     refreshed = await Analysis.get(analysis.id)
@@ -183,10 +184,11 @@ async def retry_analysis(
     current_user: CurrentUser,
 ) -> AnalysisResponse:
     user_id = _ensure_user_id(current_user)
-    from app.ai.llm import FakeLlmProvider
+    from app.ai.provider import get_llm_provider
     from app.analyses.service import retry_analysis as _retry
+    from app.database.models import AiModelUsage
 
-    provider = FakeLlmProvider()
+    provider = await get_llm_provider(AiModelUsage.ANALYSIS)
     analysis = await _retry(analysis_id, user_id, provider)
     return _analysis_to_response(analysis)
 
