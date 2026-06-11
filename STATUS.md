@@ -35,6 +35,16 @@ Branch: main
 | 57 | SSE event streams for analysis progress | #144 | ✅ |
 | 58 | Realtime test suite (notifications + SSE) | #147 | ✅ |
 
+### Phase 8 — Frontend Candidate Experience
+| # | Task | PR | Status |
+|---|------|----|--------|
+| 71 | Landing page (hero, features, how-it-works) | #159 | ✅ |
+| 72 | Auth screens (login/register/forgot/reset) | — | ⏳ |
+| 73 | Candidate dashboard | — | ⏳ |
+| 74 | Upload flow | — | ⏳ |
+| 77–83 | Resume editor/view, analysis start/progress/results, apply | — | ⏳ |
+| 86 | Candidate experience test suite | — | ⏳ |
+
 ### Phase 7 — Frontend Foundation ✅
 | # | Task | PR | Status |
 |---|------|----|--------|
