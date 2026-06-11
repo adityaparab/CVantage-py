@@ -108,9 +108,15 @@ commits (commitizen) are enforced — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Deployment
 
-Single container: a multi-stage build compiles the SPA and serves it from FastAPI on
-one port. See [docs/RUNBOOK.md](docs/RUNBOOK.md) for build, deploy, rollback, backup,
-restore, and incident procedures.
+Single container: a multi-stage `Dockerfile` compiles the SPA and serves it from FastAPI
+on one port. Run the whole stack (app + Mongo) locally from the built image:
+
+```bash
+docker compose --profile full up --build    # app on http://localhost:8000
+```
+
+See [docs/RUNBOOK.md](docs/RUNBOOK.md) for build, deploy, rollback, backup, restore, and
+incident procedures.
 
 ## Security
 
