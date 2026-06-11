@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "perf:budget": "node scripts/check-bundle-size.mjs",
+    "build:check": "pnpm build && pnpm perf:budget"
   },
   "devDependencies": {
     "@eslint/js": "^9.6.0",
