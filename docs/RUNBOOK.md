@@ -48,6 +48,24 @@ Deploy (platform, e.g. Railway):
    `GET /api/v1/health/ready` is 200.
 4. Tag the release (the commit SHA is the image tag) for traceability.
 
+### Railway (first-time setup)
+
+[`railway.json`](../railway.json) configures the deploy: the `DOCKERFILE` builder, a start
+command that binds gunicorn/uvicorn to Railway's injected `$PORT`, and the readiness
+healthcheck. To go live (requires a Railway account):
+
+1. **Provision Mongo:** add a MongoDB database to the Railway project; copy its connection
+   string into `MONGODB_URI` (and set `MONGODB_DB_NAME`).
+2. **Set service variables** (Railway dashboard → Variables): `ENVIRONMENT=production`,
+   `AUTH_ACCESS_TOKEN_SECRET`, `MASTER_ENCRYPTION_KEY` (32-byte base64), `CORS_ORIGINS`
+   (the Railway public URL), `AUTH_COOKIE_SECURE=true`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`,
+   and any optional `OPENAI_API_KEY` / `SENTRY_DSN` / `OTEL_*`. `PORT` is injected by
+   Railway. `SERVE_SPA` defaults on in production.
+3. **Deploy:** connect the GitHub repo (deploys on push to the deploy branch) or run
+   `railway up` from the repo root. Railway builds the `Dockerfile` and starts the service.
+4. **Verify:** wait for the healthcheck to pass, open the public URL (SPA loads), and
+   confirm `GET /api/v1/health/ready` is 200. Then run the launch checklist (§ below).
+
 ## Rollback
 
 Releases are immutable images tagged by commit SHA.
