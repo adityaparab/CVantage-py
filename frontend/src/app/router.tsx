@@ -54,6 +54,10 @@ const AdminDashboardPage = lazyNamed(
   "AdminDashboardPage",
 );
 const AdminUsersPage = lazyNamed(() => import("@/features/admin/AdminUsersPage"), "AdminUsersPage");
+const AdminUserDetailPage = lazyNamed(
+  () => import("@/features/admin/AdminUserDetailPage"),
+  "AdminUserDetailPage",
+);
 const AdminSettingsPage = lazyNamed(
   () => import("@/features/admin/AdminSettingsPage"),
   "AdminSettingsPage",
@@ -209,6 +213,14 @@ const router = createBrowserRouter([
         element: (
           <Lazy>
             <AdminUsersPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: "admin/users/:id",
+        element: (
+          <Lazy>
+            <AdminUserDetailPage />
           </Lazy>
         ),
       },
