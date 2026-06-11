@@ -35,6 +35,15 @@ Branch: main
 | 57 | SSE event streams for analysis progress | #144 | ✅ |
 | 58 | Realtime test suite (notifications + SSE) | #147 | ✅ |
 
+### Phase 9 — Frontend Admin + Export
+| # | Task | PR | Status |
+|---|------|----|--------|
+| 87 | Admin navigation & dashboard (stats) | #172 | ✅ |
+| 88 | Admin users list & user details | — | ⏳ |
+| 89 | Admin settings — AI models | — | ⏳ |
+| 90 | Resume export service (server) | — | ⏳ |
+| 91 | Export integration + admin client tests | — | ⏳ |
+
 ### Phase 8 — Frontend Candidate Experience
 | # | Task | PR | Status |
 |---|------|----|--------|
