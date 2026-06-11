@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { ThemeToggle } from "@/components/ui";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
 import { cn } from "@/lib/cn";
 
 function Brand() {
@@ -28,7 +29,7 @@ function NavItem({ to, children }: { to: string; children: ReactNode }) {
   );
 }
 
-function TopBar({ children }: { children?: ReactNode }) {
+function TopBar({ children, bell = false }: { children?: ReactNode; bell?: boolean }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
@@ -37,6 +38,7 @@ function TopBar({ children }: { children?: ReactNode }) {
           <nav className="hidden items-center gap-1 sm:flex">{children}</nav>
         </div>
         <div className="flex items-center gap-2">
+          {bell && <NotificationBell />}
           <ThemeToggle />
         </div>
       </div>
@@ -77,7 +79,7 @@ export function PublicLayout() {
 export function CandidateLayout() {
   return (
     <div className="flex min-h-screen flex-col">
-      <TopBar>
+      <TopBar bell>
         <NavItem to="/dashboard">Dashboard</NavItem>
       </TopBar>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">

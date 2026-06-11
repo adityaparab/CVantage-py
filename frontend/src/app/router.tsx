@@ -41,6 +41,10 @@ const AnalysisStartPage = lazyNamed(
   () => import("@/features/analysis/AnalysisStartPage"),
   "AnalysisStartPage",
 );
+const AnalysisDetailPage = lazyNamed(
+  () => import("@/features/analysis/AnalysisDetailPage"),
+  "AnalysisDetailPage",
+);
 const AdminDashboardPage = lazyNamed(
   () => import("@/features/admin/AdminDashboardPage"),
   "AdminDashboardPage",
@@ -160,6 +164,14 @@ const router = createBrowserRouter([
         element: (
           <Lazy>
             <AnalysisStartPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: "analyses/:id",
+        element: (
+          <Lazy>
+            <AnalysisDetailPage />
           </Lazy>
         ),
       },
