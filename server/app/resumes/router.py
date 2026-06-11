@@ -509,11 +509,13 @@ async def upload_resume(
     # review screen has the parsed json-resume + extracted text immediately. A
     # parse failure is recorded on the resume (status=failed) for re-parse and
     # never fails the upload itself.
-    from app.ai.llm import FakeLlmProvider
+    from app.ai.provider import get_llm_provider
+    from app.database.models import AiModelUsage
     from app.resumes.parsing import run_parse_job
 
     try:
-        await run_parse_job(resume_id, FakeLlmProvider())
+        provider = await get_llm_provider(AiModelUsage.RESUME_PARSING)
+        await run_parse_job(resume_id, provider)
     except Exception:  # noqa: BLE001 - status/error already persisted by run_parse_job
         pass
 
@@ -560,11 +562,11 @@ async def reparse_resume(
     """Re-parse a failed uploaded resume."""
     user_id = _ensure_user_id(current_user)
 
-    # Use fake provider for now (real OpenAI integration comes in P4.2+)
-    from app.ai.llm import FakeLlmProvider
+    from app.ai.provider import get_llm_provider
+    from app.database.models import AiModelUsage
     from app.resumes.parsing import reparse_resume as _reparse
 
-    provider = FakeLlmProvider()
+    provider = await get_llm_provider(AiModelUsage.RESUME_PARSING)
     await _reparse(resume_id, user_id, provider)
 
     # Re-fetch so the response reflects the freshly-parsed json-resume, extracted
