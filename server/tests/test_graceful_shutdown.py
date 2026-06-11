@@ -88,8 +88,12 @@ def test_sigterm_allows_in_flight_request_and_exits_cleanly() -> None:
         assert "error" not in result, f"In-flight request failed: {result.get('error')}"
         assert result["status_code"] == 200
 
+        # The contract under test is that the in-flight request was drained (asserted
+        # above) and the server then terminated promptly (no hang). Depending on the
+        # uvicorn version, a graceful SIGTERM either exits 0 or reflects the signal
+        # that triggered shutdown (-SIGTERM); both are acceptable here.
         return_code = process.wait(timeout=6)
-        assert return_code == 0
+        assert return_code in (0, -signal.SIGTERM)
     finally:
         if process.poll() is None:
             process.kill()
