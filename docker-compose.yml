@@ -3,7 +3,8 @@ services:
     image: mongo:7
     container_name: cvantage-mongo
     restart: unless-stopped
-    profiles: ["db"]
+    # `db` = just Mongo for local dev; `full` = the whole stack (app needs it).
+    profiles: ["db", "full"]
     ports:
       - "27017:27017"
     volumes:
@@ -18,6 +19,31 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+  app:
+    build: .
+    container_name: cvantage-app
+    restart: unless-stopped
+    profiles: ["full"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: production
+      SERVE_SPA: "true"
+      MONGODB_URI: mongodb://mongo:27017/cvantage
+      MONGODB_DB_NAME: cvantage
+      # Localhost is HTTP, so don't require Secure cookies for the demo stack.
+      AUTH_COOKIE_SECURE: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000}
+      # Dev defaults — OVERRIDE via a .env file or the shell for anything real.
+      AUTH_ACCESS_TOKEN_SECRET: ${AUTH_ACCESS_TOKEN_SECRET:-dev-compose-secret-change-me}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-please}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
 volumes:
   mongo_data:
