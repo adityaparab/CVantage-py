@@ -35,6 +35,12 @@ Branch: main
 | 57 | SSE event streams for analysis progress | #144 | ✅ |
 | 58 | Realtime test suite (notifications + SSE) | #147 | ✅ |
 
+### Phase 10 — Integration, Quality & Hardening
+| # | Task | PR | Status |
+|---|------|----|--------|
+| 92 | SPA serving from FastAPI (deep links, cache, JSON 404) | #177 | ✅ |
+| 93–99 | a11y, perf, Sentry, OTel, Playwright, security, docs | — | ⏳ |
+
 ### Phase 9 — Frontend Admin + Export
 | # | Task | PR | Status |
 |---|------|----|--------|
