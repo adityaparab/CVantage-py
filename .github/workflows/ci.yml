@@ -9,7 +9,6 @@ jobs:
   backend:
     name: Backend (Python + uv)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,19 +37,23 @@ jobs:
 
       - name: Mypy
         working-directory: server
-        run: uv run mypy tests
+        run: uv run mypy .
 
       - name: Pytest
         working-directory: server
-        run: uv run pytest tests --cov --cov-report=term-missing --cov-fail-under=80
+        run: uv run pytest --cov --cov-report=term-missing --cov-fail-under=80
 
   frontend:
     name: Frontend (Node + pnpm)
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -59,16 +62,14 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.4
-
       - name: Install frontend dependencies
         run: pnpm --dir frontend install --frozen-lockfile
 
       - name: Lint
         run: pnpm --dir frontend lint
+
+      - name: Format check
+        run: pnpm --dir frontend format
 
       - name: Typecheck
         run: pnpm --dir frontend typecheck
@@ -78,3 +79,80 @@ jobs:
 
       - name: Build
         run: pnpm --dir frontend build
+
+      - name: Bundle budget
+        run: pnpm --dir frontend perf:budget
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm --dir frontend exec playwright install --with-deps chromium
+
+      - name: Run E2E (Chromium)
+        run: pnpm --dir frontend exec playwright test --project=chromium
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: pip-audit (server)
+        working-directory: server
+        run: uvx pip-audit
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: pnpm audit (frontend)
+        run: pnpm --dir frontend audit --audit-level high
+
+  docker:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: cvantage:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
