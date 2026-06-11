@@ -20,6 +20,7 @@ from app.database import close_database, init_database
 from app.lifecycle import ShutdownCoordinator, noop_job_drain
 from app.observability import configure_logging
 from app.security import limiter, rate_limit_exceeded_handler
+from app.spa import mount_spa
 
 OPENAPI_TAGS = [
     {
@@ -221,6 +222,11 @@ def create_app() -> FastAPI:
         return response
 
     register_error_handlers(app)
+
+    if settings.is_spa_enabled:
+        from pathlib import Path
+
+        mount_spa(app, Path(settings.spa_dist_dir))
 
     return app
 

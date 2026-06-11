@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(
         default=None, description="OpenAI API key (env fallback for AI models)"
     )
+    # SPA serving (issue #92) — single-server production serves frontend/dist.
+    serve_spa: bool | None = None
+    spa_dist_dir: str = Field(default="../frontend/dist")
+
     storage_driver: str = Field(default="local", pattern=r"^(local|s3)$")
     storage_local_dir: str = Field(default="./data/uploads")
     s3_bucket: str | None = None
@@ -94,6 +98,12 @@ class Settings(BaseSettings):
         if self.swagger_enabled is not None:
             return self.swagger_enabled
         return self.environment != "production"
+
+    @property
+    def is_spa_enabled(self) -> bool:
+        if self.serve_spa is not None:
+            return self.serve_spa
+        return self.environment == "production"
 
 
 @lru_cache(maxsize=1)
