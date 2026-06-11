@@ -35,6 +35,15 @@ Branch: main
 | 57 | SSE event streams for analysis progress | #144 | ✅ |
 | 58 | Realtime test suite (notifications + SSE) | #147 | ✅ |
 
+### Phase 11 — Docker, CI/CD & Railway
+| # | Task | PR | Status |
+|---|------|----|--------|
+| 100 | Multi-stage Dockerfile (SPA build + gunicorn/uvicorn) | #185 | ✅ |
+| 101 | docker-compose full stack (app + mongo) | — | ⏳ |
+| 102 | CI/CD pipeline (GitHub Actions) | — | ⏳ |
+| 103 | Railway deploy | — | ⛔ blocked (needs Railway account) |
+| 104 | Launch checklist | — | ⛔ blocked (needs live deploy) |
+
 ### Phase 10 — Integration, Quality & Hardening
 | # | Task | PR | Status |
 |---|------|----|--------|
