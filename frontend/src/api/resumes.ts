@@ -35,7 +35,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 export async function createResume(name: string): Promise<{ id: string }> {
   const res = await apiClient.post<{ id: string }>("/resumes", {
     name,
-    jsonResume: { basics: { name } },
+    json_resume: { basics: { name } },
   });
   return res.data;
 }
@@ -44,10 +44,36 @@ export async function saveNewResume(
   name: string,
   jsonResume: Record<string, unknown>,
 ): Promise<{ id: string }> {
-  const res = await apiClient.post<{ id: string }>("/resumes", { name, jsonResume });
+  // The server expects the snake_case `json_resume` key (camelCase aliases apply
+  // only to the nested json-resume fields, e.g. startDate).
+  const res = await apiClient.post<{ id: string }>("/resumes", { name, json_resume: jsonResume });
   return res.data;
 }
 
 export async function deleteResume(id: string): Promise<void> {
   await apiClient.delete(`/resumes/${id}`);
+}
+
+export interface ResumeDetail {
+  id: string;
+  name: string;
+  source: string;
+  json_resume: Record<string, unknown>;
+  analysis_status: string;
+  analysis_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getResume(id: string): Promise<ResumeDetail> {
+  const res = await apiClient.get<ResumeDetail>(`/resumes/${id}`);
+  return res.data;
+}
+
+export async function updateResume(
+  id: string,
+  patch: { name?: string; json_resume?: Record<string, unknown> },
+): Promise<ResumeDetail> {
+  const res = await apiClient.patch<ResumeDetail>(`/resumes/${id}`, patch);
+  return res.data;
 }
