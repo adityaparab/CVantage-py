@@ -1,0 +1,5 @@
+# Playwright E2E artifacts (issue #97)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
