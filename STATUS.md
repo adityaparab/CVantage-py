@@ -39,7 +39,8 @@ Branch: main
 | # | Task | PR | Status |
 |---|------|----|--------|
 | 92 | SPA serving from FastAPI (deep links, cache, JSON 404) | #177 | ✅ |
-| 93–99 | a11y, perf, Sentry, OTel, Playwright, security, docs | — | ⏳ |
+| 93 | Accessibility audit (automated axe over key screens) | #178 | ✅ |
+| 94–99 | perf, Sentry, OTel, Playwright, security, docs | — | ⏳ |
 
 ### Phase 9 — Frontend Admin + Export
 | # | Task | PR | Status |
