@@ -40,7 +40,7 @@ Branch: main
 |---|------|----|--------|
 | 87 | Admin navigation & dashboard (stats) | #172 | ✅ |
 | 88 | Admin users list & user details (search, edit, cascade) | #173 | ✅ |
-| 89 | Admin settings — AI models | — | ⏳ |
+| 89 | Admin settings — AI models (masked, validate, rotate) | #174 | ✅ |
 | 90 | Resume export service (server) | — | ⏳ |
 | 91 | Export integration + admin client tests | — | ⏳ |
 
