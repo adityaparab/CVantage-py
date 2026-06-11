@@ -42,7 +42,8 @@ Branch: main
 | 93 | Accessibility audit (automated axe over key screens) | #178 | ✅ |
 | 94 | Performance budget (entry JS <250KB gz, route-split) | #179 | ✅ |
 | 95 | Sentry error tracking (env-gated, PII-scrubbed) | #180 | ✅ |
-| 96–99 | OTel, Playwright, security, docs | — | ⏳ |
+| 96 | OpenTelemetry tracing (env-gated, OTLP) | #181 | ✅ |
+| 97–99 | Playwright, security, docs | — | ⏳ |
 
 ### Phase 9 — Frontend Admin + Export
 | # | Task | PR | Status |

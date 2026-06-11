@@ -18,7 +18,7 @@ from app.common import register_error_handlers
 from app.config import get_settings
 from app.database import close_database, init_database
 from app.lifecycle import ShutdownCoordinator, noop_job_drain
-from app.observability import configure_logging, configure_sentry
+from app.observability import configure_logging, configure_otel, configure_sentry
 from app.security import limiter, rate_limit_exceeded_handler
 from app.spa import mount_spa
 
@@ -223,6 +223,7 @@ def create_app() -> FastAPI:
         return response
 
     register_error_handlers(app)
+    configure_otel(app, settings)
 
     if settings.is_spa_enabled:
         from pathlib import Path
