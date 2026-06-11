@@ -61,8 +61,11 @@ healthcheck. To go live (requires a Railway account):
    (the Railway public URL), `AUTH_COOKIE_SECURE=true`, `ADMIN_EMAIL`/`ADMIN_PASSWORD`,
    and any optional `OPENAI_API_KEY` / `SENTRY_DSN` / `OTEL_*`. `PORT` is injected by
    Railway. `SERVE_SPA` defaults on in production.
-3. **Deploy:** connect the GitHub repo (deploys on push to the deploy branch) or run
-   `railway up` from the repo root. Railway builds the `Dockerfile` and starts the service.
+3. **Deploy:** add a **`RAILWAY_TOKEN`** repo secret (Settings → Secrets → Actions) — the
+   [`Deploy` workflow](../.github/workflows/deploy.yml) then runs `railway up` automatically
+   after CI passes on `main` (it no-ops with a notice until the token is set). Optionally set
+   a `RAILWAY_SERVICE` repo variable (defaults to `cvantage`). You can also `railway up`
+   manually from the repo root. Railway builds the `Dockerfile` and starts the service.
 4. **Verify:** wait for the healthcheck to pass, open the public URL (SPA loads), and
    confirm `GET /api/v1/health/ready` is 200. Then run the launch checklist (§ below).
 
