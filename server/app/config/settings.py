@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     analysis_max_resume_chars: int = Field(default=200_000, ge=100)
     max_concurrent_analyses_per_user: int = Field(default=3, ge=1, le=50)
 
+    # Error tracking (issue #95 — env-gated; zero overhead when SENTRY_DSN unset)
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    sentry_release: str | None = None
+
     # LLM observability (all optional / env-gated — zero overhead when unset)
     langsmith_tracing: bool = False
     langsmith_api_key: str | None = None

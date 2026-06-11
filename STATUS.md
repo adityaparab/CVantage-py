@@ -41,7 +41,8 @@ Branch: main
 | 92 | SPA serving from FastAPI (deep links, cache, JSON 404) | #177 | ✅ |
 | 93 | Accessibility audit (automated axe over key screens) | #178 | ✅ |
 | 94 | Performance budget (entry JS <250KB gz, route-split) | #179 | ✅ |
-| 95–99 | Sentry, OTel, Playwright, security, docs | — | ⏳ |
+| 95 | Sentry error tracking (env-gated, PII-scrubbed) | #180 | ✅ |
+| 96–99 | OTel, Playwright, security, docs | — | ⏳ |
 
 ### Phase 9 — Frontend Admin + Export
 | # | Task | PR | Status |

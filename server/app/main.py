@@ -18,7 +18,7 @@ from app.common import register_error_handlers
 from app.config import get_settings
 from app.database import close_database, init_database
 from app.lifecycle import ShutdownCoordinator, noop_job_drain
-from app.observability import configure_logging
+from app.observability import configure_logging, configure_sentry
 from app.security import limiter, rate_limit_exceeded_handler
 from app.spa import mount_spa
 
@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.job_runner_drain_hook = noop_job_drain
 
     configure_logging(settings.log_level, settings.environment)
+    configure_sentry(settings)
     configure_langsmith(settings)
     await init_database(settings)
     try:
