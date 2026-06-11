@@ -32,7 +32,7 @@ describe("ResumeEditorPage", () => {
   });
 
   it("saves a pruned json-resume and navigates to the view", async () => {
-    let captured: { name?: string; jsonResume?: Record<string, unknown> } = {};
+    let captured: { name?: string; json_resume?: Record<string, unknown> } = {};
     server.use(
       http.post("*/api/v1/resumes", async ({ request }) => {
         captured = (await request.json()) as typeof captured;
@@ -49,7 +49,7 @@ describe("ResumeEditorPage", () => {
     expect(await screen.findByText("Resume view")).toBeInTheDocument();
     expect(captured.name).toBe("Backend Engineer");
     // Placeholders pruned: only the filled basics.name survives.
-    expect(captured.jsonResume).toEqual({ basics: { name: "Ada Lovelace" } });
+    expect(captured.json_resume).toEqual({ basics: { name: "Ada Lovelace" } });
   });
 
   it("blocks saving without a resume name", async () => {
