@@ -23,6 +23,7 @@ from app.resumes.schemas import (
     ResumeListResponse,
     ResumeResponse,
     UpdateResumeRequest,
+    UploadParseInfo,
     resume_to_clean_dict,
 )
 from app.resumes.schemas import (
@@ -35,6 +36,7 @@ def _utcnow() -> datetime:
 
 
 def _to_resume_response(resume: Resume) -> ResumeResponse:
+    parse = resume.upload_parse
     return ResumeResponse(
         id=str(resume.id),
         name=resume.name,
@@ -44,6 +46,17 @@ def _to_resume_response(resume: Resume) -> ResumeResponse:
         ),
         analysis_status=resume.analysis_status.value,
         original_text=resume.original_text,
+        upload_parse=(
+            UploadParseInfo(
+                status=parse.status.value,
+                error=parse.error,
+                model_used=parse.model_used,
+                started_at=parse.started_at,
+                completed_at=parse.completed_at,
+            )
+            if parse is not None
+            else None
+        ),
         last_analyzed_at=resume.last_analyzed_at,
         analysis_count=resume.analysis_count,
         created_at=resume.created_at,

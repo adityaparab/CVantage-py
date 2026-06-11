@@ -33,7 +33,6 @@ from app.resumes.schemas import (
     ResumeResponse,
     UpdateResumeRequest,
 )
-from app.resumes.schemas import Resume as SchemasResume
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
@@ -501,23 +500,25 @@ async def upload_resume(
         upload_parse=UploadParse(status=UploadParseStatus.PENDING),
     )
     await resume.insert()
+    resume_id = resume.id
+    assert resume_id is not None  # set by insert()
 
     await User.find({"_id": user_id}).inc({"resume_count": 1})
 
-    return ResumeResponse(
-        id=str(resume.id),
-        name=resume.name,
-        source=resume.source.value,
-        json_resume=SchemasResume.model_validate(
-            resume.json_resume.model_dump(exclude_none=True, by_alias=True)
-        ),
-        analysis_status=resume.analysis_status.value,
-        original_text=resume.original_text,
-        last_analyzed_at=resume.last_analyzed_at,
-        analysis_count=resume.analysis_count,
-        created_at=resume.created_at,
-        updated_at=resume.updated_at,
-    )
+    # Parse the upload inline (deterministic fake provider by default) so the
+    # review screen has the parsed json-resume + extracted text immediately. A
+    # parse failure is recorded on the resume (status=failed) for re-parse and
+    # never fails the upload itself.
+    from app.ai.llm import FakeLlmProvider
+    from app.resumes.parsing import run_parse_job
+
+    try:
+        await run_parse_job(resume_id, FakeLlmProvider())
+    except Exception:  # noqa: BLE001 - status/error already persisted by run_parse_job
+        pass
+
+    parsed = await Resume.get(resume_id)
+    return service._to_resume_response(parsed if parsed is not None else resume)
 
 
 # ============================================================================
@@ -564,17 +565,11 @@ async def reparse_resume(
     from app.resumes.parsing import reparse_resume as _reparse
 
     provider = FakeLlmProvider()
-    result_dict = await _reparse(resume_id, user_id, provider)
+    await _reparse(resume_id, user_id, provider)
 
-    return ResumeResponse(
-        id=str(result_dict["id"]),
-        name=str(result_dict["name"]),
-        source=str(result_dict["source"]),
-        json_resume=SchemasResume.model_validate(result_dict["json_resume"]),
-        analysis_status="unanalyzed",
-        original_text=None,
-        last_analyzed_at=None,
-        analysis_count=0,
-        created_at=_utcnow(),
-        updated_at=_utcnow(),
-    )
+    # Re-fetch so the response reflects the freshly-parsed json-resume, extracted
+    # text, and upload-parse status.
+    parsed = await Resume.find_one({"_id": resume_id, "user_id": user_id, "deleted_at": None})
+    if parsed is None:
+        raise HTTPException(status_code=404, detail={"message": "Resume not found"})
+    return service._to_resume_response(parsed)

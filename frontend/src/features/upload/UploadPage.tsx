@@ -28,7 +28,7 @@ export function UploadPage() {
     setProgress(0);
     try {
       const resume = await uploadResume(file, setProgress);
-      navigate(`/resumes/${resume.id}`);
+      navigate(`/resumes/${resume.id}/review`);
     } catch (e) {
       setError(toApiError(e).message);
       setStatus("error");
