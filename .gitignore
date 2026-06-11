@@ -35,3 +35,7 @@ Thumbs.db
 
 .secrets/
 server/data/
+
+# Coverage output
+coverage/
+frontend/coverage/
