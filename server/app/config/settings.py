@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     sentry_release: str | None = None
 
+    # Distributed tracing (issue #96 — env-gated; off unless an OTLP endpoint is set)
+    otel_enabled: bool = False
+    otel_exporter_otlp_endpoint: str | None = None
+    otel_service_name: str = "cvantage-api"
+
     # LLM observability (all optional / env-gated — zero overhead when unset)
     langsmith_tracing: bool = False
     langsmith_api_key: str | None = None
