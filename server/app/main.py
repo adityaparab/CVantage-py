@@ -54,6 +54,27 @@ OPENAPI_TAGS = [
 ]
 
 
+# Content-Security-Policy for the single-server SPA (issue #98). The inline
+# theme-bootstrap script in frontend/index.html is allow-listed by hash (not
+# 'unsafe-inline'); a drift test recomputes it. Google Fonts are allow-listed;
+# dynamic inline style attributes require 'unsafe-inline' for styles only.
+INLINE_THEME_SCRIPT_HASH = "sha256-6QQKaqspGAK5OMrP0ZhE8K74AJ50QGc0G9LHbWPwgW8="
+CONTENT_SECURITY_POLICY = "; ".join(
+    [
+        "default-src 'self'",
+        f"script-src 'self' '{INLINE_THEME_SCRIPT_HASH}'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+    ]
+)
+
+
 def _remaining_timeout_seconds(deadline: float) -> float:
     remaining = deadline - perf_counter()
     return max(remaining, 0.0)
@@ -210,8 +231,11 @@ def create_app() -> FastAPI:
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        # HSTS only in production (HTTPS) — avoids pinning HTTP dev/test to TLS.
+        if settings.environment == "production":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         logger.info(
             "request.completed",
             method=request.method,
