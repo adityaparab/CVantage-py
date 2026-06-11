@@ -5,6 +5,7 @@ import { queryKeys } from "@/api/queryKeys";
 import { getResume, updateResume, type ResumeDetail } from "@/api/resumes";
 import { Skeleton, useToast } from "@/components/ui";
 import { EditableText } from "@/features/resume/EditableText";
+import { ExportDropdown } from "@/features/resume/ExportDropdown";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 type Json = Record<string, unknown>;
@@ -75,12 +76,15 @@ export function ResumeViewPage() {
     <article className="mx-auto max-w-3xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-text">{resume.data.name}</h1>
-        <Link
-          to={`/analyses/new/${id}`}
-          className="rounded-[10px] bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
-        >
-          Analyze resume
-        </Link>
+        <div className="flex items-center gap-2">
+          <ExportDropdown resumeId={resume.data.id} name={resume.data.name} />
+          <Link
+            to={`/analyses/new/${id}`}
+            className="rounded-[10px] bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
+          >
+            Analyze resume
+          </Link>
+        </div>
       </div>
 
       <header className="mt-4">
