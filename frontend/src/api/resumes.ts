@@ -40,6 +40,14 @@ export async function createResume(name: string): Promise<{ id: string }> {
   return res.data;
 }
 
+export async function saveNewResume(
+  name: string,
+  jsonResume: Record<string, unknown>,
+): Promise<{ id: string }> {
+  const res = await apiClient.post<{ id: string }>("/resumes", { name, jsonResume });
+  return res.data;
+}
+
 export async function deleteResume(id: string): Promise<void> {
   await apiClient.delete(`/resumes/${id}`);
 }

@@ -42,7 +42,8 @@ Branch: main
 | 72 | Auth screens (login/register/forgot/reset, OAuth) | #160 | ✅ |
 | 73 | Candidate dashboard (stats, table, create/delete) | #161 | ✅ |
 | 74 | Upload flow (dropzone, validation, progress) | #162 | ✅ |
-| 77–83 | Resume editor/view, analysis start/progress/results, apply | — | ⏳ |
+| 77 | Resume editor (all 12 sections, prune, section nav) | #164 | ✅ |
+| 78–83 | Resume view/edit, analysis start/progress/results, apply | — | ⏳ |
 | 86 | Candidate experience test suite | — | ⏳ |
 
 ### Phase 7 — Frontend Foundation ✅

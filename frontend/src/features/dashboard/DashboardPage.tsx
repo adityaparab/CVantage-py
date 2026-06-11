@@ -3,13 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queryKeys";
-import {
-  createResume,
-  deleteResume,
-  getDashboardStats,
-  listResumes,
-  type ResumeListItem,
-} from "@/api/resumes";
+import { deleteResume, getDashboardStats, listResumes, type ResumeListItem } from "@/api/resumes";
 import {
   Badge,
   Button,
@@ -58,12 +52,6 @@ export function DashboardPage() {
 
   const stats = useQuery({ queryKey: queryKeys.resumes.stats, queryFn: getDashboardStats });
   const resumes = useQuery({ queryKey: queryKeys.resumes.list(), queryFn: () => listResumes() });
-
-  const createMutation = useMutation({
-    mutationFn: () => createResume("Untitled resume"),
-    onSuccess: (data) => navigate(`/resumes/${data.id}`),
-    onError: (e) => toast(toApiError(e).message, "danger"),
-  });
 
   const deleteMutation = useMutation({
     mutationFn: deleteResume,
@@ -132,9 +120,7 @@ export function DashboardPage() {
           <Button variant="secondary" onClick={() => navigate("/upload")}>
             Upload resume
           </Button>
-          <Button loading={createMutation.isPending} onClick={() => createMutation.mutate()}>
-            Create resume
-          </Button>
+          <Button onClick={() => navigate("/resumes/new")}>Create resume</Button>
         </div>
       </div>
 
@@ -151,7 +137,7 @@ export function DashboardPage() {
           <EmptyState
             title="No resumes yet"
             description="Create a resume or upload an existing file to get started."
-            action={<Button onClick={() => createMutation.mutate()}>Create resume</Button>}
+            action={<Button onClick={() => navigate("/resumes/new")}>Create resume</Button>}
           />
         ) : (
           <Table<ResumeListItem> columns={columns} rows={items} rowKey={(r) => r.id} />
