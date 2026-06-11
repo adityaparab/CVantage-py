@@ -40,7 +40,7 @@ Branch: main
 |---|------|----|--------|
 | 100 | Multi-stage Dockerfile (SPA build + gunicorn/uvicorn) | #185 | ✅ |
 | 101 | docker-compose full stack (app + mongo) | #186 | ✅ |
-| 102 | CI/CD pipeline (GitHub Actions) | — | ⏳ |
+| 102 | CI/CD pipeline (GitHub Actions) | #187 | ✅ |
 | 103 | Railway deploy | — | ⛔ blocked (needs Railway account) |
 | 104 | Launch checklist | — | ⛔ blocked (needs live deploy) |
 
