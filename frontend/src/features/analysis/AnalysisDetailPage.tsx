@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { getAnalysis, retryAnalysis, type Analysis } from "@/api/analyses";
 import { toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queryKeys";
 import { Badge, Button, ProgressSteps, Skeleton, useToast, type StepStatus } from "@/components/ui";
+import { AnalysisResults } from "@/features/analysis/AnalysisResults";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 const STEP_LABELS: Record<string, string> = {
@@ -87,13 +88,17 @@ export function AnalysisDetailPage() {
       )}
 
       {a.status === "completed" && a.result && (
-        <section className="rounded-card border border-border bg-card p-6 text-center">
-          <p className="text-sm text-muted">Overall match</p>
-          <p className="text-4xl font-bold text-accent-text">{a.result.overall_score}</p>
-          <p className="mt-2 text-sm text-muted">
-            Full results and suggestions render on this page (#82).
-          </p>
-        </section>
+        <AnalysisResults
+          result={a.result}
+          actions={
+            <Link
+              to={`/analyses/${id}/apply`}
+              className="rounded-[10px] bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              Apply suggestions
+            </Link>
+          }
+        />
       )}
     </div>
   );

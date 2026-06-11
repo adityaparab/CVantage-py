@@ -46,7 +46,8 @@ Branch: main
 | 78 | Resume view & in-place editing (PATCH, 409 reload) | #165 | ✅ |
 | 80 | Analysis start screen (JD input, validation, create) | #166 | ✅ |
 | 81 | Analysis progress + bell notification (poll, retry) | #167 | ✅ |
-| 79, 82, 83 | Upload review, analysis results, apply-suggestions | — | ⏳ |
+| 82 | Analysis results (scores, suggestions, interview QA) | #168 | ✅ |
+| 79, 83 | Upload review, apply-suggestions | — | ⏳ |
 | 86 | Candidate experience test suite | — | ⏳ |
 
 ### Phase 7 — Frontend Foundation ✅
