@@ -1,0 +1,52 @@
+name: Deploy
+
+# Runs after CI completes on main. Deploys to Railway only once a RAILWAY_TOKEN
+# secret is configured; until then it logs a notice and no-ops (so it never
+# fails the repo for maintainers who haven't connected Railway yet).
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Railway deploy
+    runs-on: ubuntu-latest
+    # Only deploy when the upstream CI run succeeded.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for RAILWAY_TOKEN
+        id: guard
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RAILWAY_TOKEN is not set — skipping deploy. Add it in repo Settings → Secrets to enable auto-deploy."
+          else
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node
+        if: steps.guard.outputs.has_token == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Railway CLI
+        if: steps.guard.outputs.has_token == 'true'
+        run: npm i -g @railway/cli
+
+      - name: Deploy to Railway
+        if: steps.guard.outputs.has_token == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "${{ vars.RAILWAY_SERVICE || 'cvantage' }}" --detach
