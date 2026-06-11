@@ -4,7 +4,8 @@ import { applySuggestion, dismissSuggestion, getAnalysis } from "@/api/analyses"
 import { toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queryKeys";
 import { getResume } from "@/api/resumes";
-import { Badge, Button, Skeleton, Tooltip, useToast } from "@/components/ui";
+import { Badge, Button, Skeleton, useToast } from "@/components/ui";
+import { ExportDropdown } from "@/features/resume/ExportDropdown";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 type Json = Record<string, unknown>;
@@ -91,11 +92,7 @@ export function ApplySuggestionsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-text">Apply suggestions</h1>
         <div className="flex items-center gap-2">
-          <Tooltip label="Export ships in #9.4">
-            <Button variant="secondary" disabled>
-              Download ▾
-            </Button>
-          </Tooltip>
+          {resume.data && <ExportDropdown resumeId={resume.data.id} name={resume.data.name} />}
           <Link to={`/analyses/${id}`} className="text-sm text-accent-text">
             Back to results
           </Link>

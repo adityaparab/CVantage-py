@@ -77,3 +77,11 @@ export async function updateResume(
   const res = await apiClient.patch<ResumeDetail>(`/resumes/${id}`, patch);
   return res.data;
 }
+
+export async function exportResume(id: string, format: "pdf" | "docx"): Promise<Blob> {
+  const res = await apiClient.get(`/resumes/${id}/export`, {
+    params: { format },
+    responseType: "blob",
+  });
+  return res.data as Blob;
+}

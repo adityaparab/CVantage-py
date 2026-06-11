@@ -131,4 +131,69 @@ describe("AdminUserDetailPage", () => {
     await u.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByText("This user has no resumes.")).toBeInTheDocument());
   });
+
+  it("resets the password and deactivates the user", async () => {
+    let resetCalled = false;
+    let status = "active";
+    server.use(
+      http.get("*/api/v1/admin/users/u1", () =>
+        HttpResponse.json({ ...user("u1", "Jane"), status }),
+      ),
+      http.get("*/api/v1/admin/users/u1/resumes", () => HttpResponse.json({ items: [] })),
+      http.post("*/api/v1/admin/users/u1/reset-password", () => {
+        resetCalled = true;
+        return HttpResponse.json({ status: "ok", method: "reset_email" });
+      }),
+      http.post("*/api/v1/admin/users/u1/deactivate", () => {
+        status = "deactivated";
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.post("*/api/v1/admin/users/u1/reactivate", () => {
+        status = "active";
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    const router = createMemoryRouter(
+      [{ path: "/admin/users/:id", element: <AdminUserDetailPage /> }],
+      { initialEntries: ["/admin/users/u1"] },
+    );
+    const u = userEvent.setup();
+    render(withProviders(<RouterProvider router={router} />));
+
+    await u.click(await screen.findByRole("button", { name: "Reset password" }));
+    await waitFor(() => expect(resetCalled).toBe(true));
+
+    await u.click(screen.getByRole("button", { name: "Deactivate" }));
+    const reactivate = await screen.findByRole("button", { name: "Reactivate" });
+    await u.click(reactivate);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Deactivate" })).toBeInTheDocument(),
+    );
+  });
+});
+
+describe("AdminUsersPage search", () => {
+  it("issues a debounced, server-driven search", async () => {
+    const searches: string[] = [];
+    server.use(
+      http.get("*/api/v1/users/me", () => HttpResponse.json(adminMe)),
+      http.get("*/api/v1/admin/users", ({ request }) => {
+        const term = new URL(request.url).searchParams.get("search");
+        if (term) searches.push(term);
+        return HttpResponse.json({
+          items: term === "bob" ? [user("u2", "Bob")] : [user("u1", "Jane")],
+          total: 1,
+          skip: 0,
+          limit: 50,
+        });
+      }),
+    );
+    const u = userEvent.setup();
+    render(withProviders(<MemoryRouter>{<AdminUsersPage />}</MemoryRouter>));
+
+    await screen.findByText("Jane");
+    await u.type(screen.getByLabelText("Search"), "bob");
+    await waitFor(() => expect(searches).toContain("bob"));
+    expect(await screen.findByText("Bob")).toBeInTheDocument();
+  });
 });

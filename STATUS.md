@@ -42,7 +42,7 @@ Branch: main
 | 88 | Admin users list & user details (search, edit, cascade) | #173 | ✅ |
 | 89 | Admin settings — AI models (masked, validate, rotate) | #174 | ✅ |
 | 90 | Resume export service (DOCX+PDF, pure-Python) | #175 | ✅ |
-| 91 | Export integration + admin client tests | — | ⏳ |
+| 91 | Export integration (download dropdown) + admin tests | #176 | ✅ |
 
 ### Phase 8 — Frontend Candidate Experience
 | # | Task | PR | Status |

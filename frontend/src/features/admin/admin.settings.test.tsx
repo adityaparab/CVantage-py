@@ -79,4 +79,37 @@ describe("AdminSettingsPage", () => {
 
     await waitFor(() => expect(screen.getByText("••••9999")).toBeInTheDocument());
   });
+
+  it("disables, rotates, and deletes a model", async () => {
+    const calls: string[] = [];
+    server.use(
+      http.get("*/api/v1/admin/models", () => HttpResponse.json({ items: [model("m1", "3kF9")] })),
+      http.patch("*/api/v1/admin/models/m1", () => {
+        calls.push("disable");
+        return HttpResponse.json({ ...model("m1", "3kF9"), status: "disabled" });
+      }),
+      http.post("*/api/v1/admin/models/m1/rotate-key", () => {
+        calls.push("rotate");
+        return HttpResponse.json({ ...model("m1", "8888") });
+      }),
+      http.delete("*/api/v1/admin/models/m1", () => {
+        calls.push("delete");
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderSettings();
+
+    await screen.findByText("••••3kF9");
+    await user.click(screen.getByRole("button", { name: "Disable" }));
+    await waitFor(() => expect(calls).toContain("disable"));
+
+    await user.click(screen.getByRole("button", { name: "Rotate key" }));
+    await user.type(screen.getByLabelText("New API key"), "sk-rotated-8888");
+    await user.click(screen.getByRole("button", { name: "Rotate" }));
+    await waitFor(() => expect(calls).toContain("rotate"));
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(calls).toContain("delete"));
+  });
 });
