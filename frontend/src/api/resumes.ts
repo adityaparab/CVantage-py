@@ -54,12 +54,24 @@ export async function deleteResume(id: string): Promise<void> {
   await apiClient.delete(`/resumes/${id}`);
 }
 
+export type UploadParseStatus = "pending" | "processing" | "completed" | "failed";
+
+export interface UploadParseInfo {
+  status: UploadParseStatus;
+  error: string | null;
+  model_used: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export interface ResumeDetail {
   id: string;
   name: string;
   source: string;
   json_resume: Record<string, unknown>;
   analysis_status: string;
+  original_text: string | null;
+  upload_parse: UploadParseInfo | null;
   analysis_count: number;
   created_at: string;
   updated_at: string;
@@ -67,6 +79,11 @@ export interface ResumeDetail {
 
 export async function getResume(id: string): Promise<ResumeDetail> {
   const res = await apiClient.get<ResumeDetail>(`/resumes/${id}`);
+  return res.data;
+}
+
+export async function reparseResume(id: string): Promise<ResumeDetail> {
+  const res = await apiClient.post<ResumeDetail>(`/resumes/${id}/reparse`);
   return res.data;
 }
 
