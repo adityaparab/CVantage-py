@@ -37,6 +37,10 @@ const ResumeViewPage = lazyNamed(
   () => import("@/features/resume/ResumeViewPage"),
   "ResumeViewPage",
 );
+const AnalysisStartPage = lazyNamed(
+  () => import("@/features/analysis/AnalysisStartPage"),
+  "AnalysisStartPage",
+);
 const AdminDashboardPage = lazyNamed(
   () => import("@/features/admin/AdminDashboardPage"),
   "AdminDashboardPage",
@@ -148,6 +152,14 @@ const router = createBrowserRouter([
         element: (
           <Lazy>
             <ResumeViewPage />
+          </Lazy>
+        ),
+      },
+      {
+        path: "analyses/new/:resumeId",
+        element: (
+          <Lazy>
+            <AnalysisStartPage />
           </Lazy>
         ),
       },
