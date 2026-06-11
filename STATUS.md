@@ -40,7 +40,7 @@ Branch: main
 |---|------|----|--------|
 | 71 | Landing page (hero, features, how-it-works) | #159 | ✅ |
 | 72 | Auth screens (login/register/forgot/reset, OAuth) | #160 | ✅ |
-| 73 | Candidate dashboard | — | ⏳ |
+| 73 | Candidate dashboard (stats, table, create/delete) | #161 | ✅ |
 | 74 | Upload flow | — | ⏳ |
 | 77–83 | Resume editor/view, analysis start/progress/results, apply | — | ⏳ |
 | 86 | Candidate experience test suite | — | ⏳ |
